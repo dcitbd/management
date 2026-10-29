@@ -1,0 +1,32 @@
+{
+    "name": "dreamcareerit/ai-business-suite",
+    "description": "Dream Career IT — AI Business Suite: Production Full-Stack ERP, Bulk Campaign & Messaging Platform",
+    "type": "project",
+    "license": "Proprietary",
+    "authors": [
+        {
+            "name": "Jainal Abedin",
+            "role": "CEO & Lead Architect",
+            "email": "jainal.dcitbd@gmail.com",
+            "homepage": "https://dreamcartbd.com"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ext-pdo": "*",
+        "ext-json": "*",
+        "ext-openssl": "*",
+        "ext-mbstring": "*",
+        "ext-curl": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "scripts": {
+        "setup": "php database/setup.php",
+        "seed": "php database/seeders/DatabaseSeeder.php",
+        "worker": "php src/Services/EmailQueueWorker.php"
+    }
+}

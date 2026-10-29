@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dream Career IT — AI Business Suite</title>
+    <meta name="description" content="Dream Career IT — AI Business Suite | Full-Stack Web App, PWA & Desktop Application by Jainal Abedin, CEO, Dream Career IT Bangladesh.">
+    <meta name="theme-color" content="#0b1120">
+    <link rel="icon" type="image/svg+xml" href="assets/images/favicon.svg">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="assets/css/app.css">
+    <link rel="stylesheet" href="assets/css/auth.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        .spa-view { display: none; }
+        .spa-view.active { display: block; animation: fadeIn 0.2s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        #auth-screen { position: fixed; inset: 0; z-index: 5000; background: #070d19; display: flex; align-items: center; justify-content: center; overflow-y: auto; }
+        #auth-screen.hidden { display: none !important; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+        @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+        .form-label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; font-weight: 600; }
+        .input-box { width: 100%; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 9px 12px; color: var(--text-primary); font-size: 13px; outline: none; }
+        .input-box:focus { border-color: var(--accent-cyan); }
+        .tab-bar { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+        .tab-btn { background: var(--bg-surface); border: 1px solid var(--border-color); color: var(--text-secondary); padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; }
+        .tab-btn.active { background: rgba(0, 242, 254, 0.15); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+    </style>
+</head>
+<body class="app-body">
+
+    <!-- ================================================================= -->
+    <!-- 1. AUTHENTICATION & SECURE SETUP OVERLAY (Requires Auth First)   -->
+    <!-- ================================================================= -->
+    <div id="auth-screen">
+        <div class="auth-container">
+            <div class="auth-branding">
+                <img src="assets/images/logo.svg" alt="Dream Career IT" class="auth-logo">
+                <div class="badge-ceo">Designer: Jainal Abedin &bull; CEO, Dream Career IT Bangladesh</div>
+            </div>
+            <div class="auth-card">
+                <div class="auth-header">
+                    <h2 id="auth-heading">Enterprise Sign In</h2>
+                    <p id="auth-subheading">Authenticate to access Dream Career IT — AI Business Suite</p>
+                </div>
+                <div id="auth-alert" class="alert alert-danger" style="display:none;"></div>
+                <form id="spaLoginForm" onsubmit="SuiteApp.handleAuth(event)">
+                    <div class="form-group" id="setup-name-group" style="display:none;">
+                        <label>Administrator Full Name</label>
+                        <div class="input-icon-wrapper">
+                            <i class="bi bi-person-badge-fill"></i>
+                            <input type="text" id="authName" class="form-control" value="Jainal Abedin">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Work Email Address</label>
+                        <div class="input-icon-wrapper">
+                            <i class="bi bi-envelope-fill"></i>
+                            <input type="email" id="authEmail" class="form-control" value="jainal.dcitbd@gmail.com" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="label-row">
+                            <label>Password</label>
+                            <a href="javascript:void(0)" onclick="SuiteApp.resetAdminPrompt()" class="forgot-link">Reset / First-Time Setup?</a>
+                        </div>
+                        <div class="input-icon-wrapper">
+                            <i class="bi bi-lock-fill"></i>
+                            <input type="password" id="authPassword" class="form-control" placeholder="Enter your password (min 6 chars)" required>
+                            <button type="button" class="btn-toggle-pw" onclick="App.togglePasswordVisibility('authPassword')">
+                                <i class="bi bi-eye-fill"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block btn-lg" id="authSubmitBtn">
+                        <span>Access Instrument Panel</span>
+                        <i class="bi bi-arrow-right-short"></i>
+                    </button>
+                </form>
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid #1e293b;font-size:12px;color:#94a3b8;text-align:center;">
+                    <span>First time opening on GitHub Pages? Enter any secure password above to initialize your Administrator session.</span>
+                </div>
+            </div>
+            <div class="auth-footer">
+                <p>&copy; 2026 Dream Career IT Bangladesh &bull; CEO: <strong>Jainal Abedin</strong></p>
+                <p>Call: 01581703822, 01818273838 &bull; Email: jainal.dcitbd@gmail.com &bull; <a href="https://dreamcartbd.com" target="_blank" rel="noopener">Our Shop: dreamcartbd.com</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 2. DESKTOP NATIVE TITLEBAR                                        -->
+    <!-- ================================================================= -->
+    <div class="desktop-titlebar" id="app-titlebar">
+        <div class="titlebar-drag-region">
+            <div class="titlebar-brand">
+                <img src="assets/images/favicon.svg" alt="Icon" class="titlebar-icon">
+                <span class="titlebar-title">Dream Career IT — AI Business Suite</span>
+                <span class="badge-tag">FULL-STACK + PWA + DESKTOP</span>
+            </div>
+        </div>
+        <div class="titlebar-controls">
+            <button type="button" class="titlebar-btn" title="Toggle Fullscreen" onclick="App.toggleFullScreen()">
+                <i class="bi bi-arrows-fullscreen"></i>
+            </button>
+            <button type="button" class="titlebar-btn" title="Minimize (Desktop Wrapper)" onclick="App.minimizeWindow()">
+                <i class="bi bi-dash-lg"></i>
+            </button>
+            <button type="button" class="titlebar-btn" title="Maximize / Restore" onclick="App.maximizeWindow()">
+                <i class="bi bi-square"></i>
+            </button>
+            <button type="button" class="titlebar-btn close-btn" title="Close Window" onclick="App.closeWindow()">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ================================================================= -->
+    <!-- 3. MAIN APPLICATION SHELL                                         -->
+    <!-- ================================================================= -->
+    <div class="app-shell">
+        <!-- Collapsible Sidebar -->
+        <aside class="app-sidebar" id="app-sidebar">
+            <div class="sidebar-header">
+                <a href="javascript:void(0)" onclick="SuiteApp.nav('dashboard')" class="sidebar-logo-link">
+                    <img src="assets/images/logo.svg" alt="Dream Career IT" class="sidebar-logo">
+                </a>
+                <button type="button" class="sidebar-collapse-btn" onclick="App.toggleSidebar()" title="Collapse/Expand">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+            </div>
+
+            <div class="sidebar-nav-scroller">
+                <div class="nav-group-label">MAIN CONTROL</div>
+                <ul class="sidebar-menu">
+                    <li class="menu-item active" data-nav="dashboard">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('dashboard')">
+                            <i class="bi bi-speedometer2"></i>
+                            <span class="menu-label">Instrument Panel</span>
+                            <span class="badge-live">LIVE</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="services">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('services')">
+                            <i class="bi bi-briefcase-fill"></i>
+                            <span class="menu-label">Services Catalog</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="nav-group-label">CAMPAIGN & EMAIL ENGINE</div>
+                <ul class="sidebar-menu">
+                    <li class="menu-item" data-nav="templates">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('templates')">
+                            <i class="bi bi-layout-text-window-reverse"></i>
+                            <span class="menu-label">Email Templates</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="send-campaign">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('send-campaign')">
+                            <i class="bi bi-send-fill"></i>
+                            <span class="menu-label">Send Email Campaign</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="campaign-logs">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('campaign-logs')">
+                            <i class="bi bi-clock-history"></i>
+                            <span class="menu-label">Queue & Delivery Logs</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="contacts">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('contacts')">
+                            <i class="bi bi-person-lines-fill"></i>
+                            <span class="menu-label">Contacts & Clients</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="nav-group-label">COMMUNICATION & AI</div>
+                <ul class="sidebar-menu">
+                    <li class="menu-item" data-nav="messages">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('messages')">
+                            <i class="bi bi-chat-dots-fill"></i>
+                            <span class="menu-label">Unified Message Center</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="ai-assistant">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('ai-assistant')">
+                            <i class="bi bi-robot"></i>
+                            <span class="menu-label">AI Assistant</span>
+                            <span class="badge-ai">AI</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="nav-group-label">PROJECTS & OPERATIONS</div>
+                <ul class="sidebar-menu">
+                    <li class="menu-item" data-nav="projects">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('projects')">
+                            <i class="bi bi-kanban"></i>
+                            <span class="menu-label">Projects & Tasks</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="tickets">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('tickets')">
+                            <i class="bi bi-headset"></i>
+                            <span class="menu-label">Support Tickets</span>
+                        </a>
+                    </li>
+                </ul>
+
+                <div class="nav-group-label">SYSTEM & SECURITY</div>
+                <ul class="sidebar-menu">
+                    <li class="menu-item" data-nav="settings">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('settings')">
+                            <i class="bi bi-sliders"></i>
+                            <span class="menu-label">Settings & Integrations</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="users">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('users')">
+                            <i class="bi bi-shield-lock-fill"></i>
+                            <span class="menu-label">User Management & RBAC</span>
+                        </a>
+                    </li>
+                    <li class="menu-item" data-nav="audit-logs">
+                        <a href="javascript:void(0)" onclick="SuiteApp.nav('audit-logs')">
+                            <i class="bi bi-shield-check"></i>
+                            <span class="menu-label">Activity & Audit Logs</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="user-avatar-circle" id="sidebarUserInitial">J</div>
+                <div class="user-info-text">
+                    <div class="user-name" id="sidebarUserName">Jainal Abedin</div>
+                    <div class="user-role" id="sidebarUserRole">CEO &bull; Administrator</div>
+                </div>
+                <a href="javascript:void(0)" onclick="SuiteApp.logout()" class="sidebar-logout-btn" title="Sign Out">
+                    <i class="bi bi-box-arrow-right"></i>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <div class="app-main-wrapper">
+            <header class="app-topbar">
+                <div class="topbar-left">
+                    <button type="button" class="mobile-menu-btn" onclick="App.toggleMobileSidebar()">
+                        <i class="bi bi-list"></i>
+                    </button>
+                    <div class="search-input-wrapper">
+                        <i class="bi bi-search search-icon"></i>
+                        <input type="text" placeholder="Search services, contacts, campaigns, tickets..." class="global-search-input" oninput="SuiteApp.globalSearch(this.value)">
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <button type="button" class="btn btn-sm btn-outline" id="pwa-install-btn" style="display:none;" onclick="SuiteApp.installPWA()">
+                        <i class="bi bi-download text-cyan"></i> Install App
+                    </button>
+                    <button type="button" class="topbar-action-btn" onclick="App.toggleTheme()" title="Toggle Dark/Light Theme">
+                        <i class="bi bi-moon-stars-fill theme-icon-dark"></i>
+                        <i class="bi bi-sun-fill theme-icon-light"></i>
+                    </button>
+                    <a href="https://dreamcartbd.com" target="_blank" rel="noopener" class="topbar-shop-btn">
+                        <i class="bi bi-cart3"></i>
+                        <span>dreamcartbd.com</span>
+                    </a>
+                    <div class="user-dropdown">
+                        <div class="user-pill" onclick="App.toggleUserMenu()">
+                            <div class="user-avatar-small">J</div>
+                            <span class="user-pill-name" id="topUserName">Jainal Abedin</span>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                        <div class="user-menu-dropdown" id="userMenuDropdown">
+                            <div style="padding:8px 10px;">
+                                <strong style="display:block;font-size:13px;">Jainal Abedin</strong>
+                                <small style="color:#94a3b8;font-size:11px;">jainal.dcitbd@gmail.com</small>
+                            </div>
+                            <hr>
+                            <a href="javascript:void(0)" onclick="SuiteApp.nav('settings')"><i class="bi bi-gear"></i> System Settings</a>
+                            <a href="javascript:void(0)" onclick="SuiteApp.nav('audit-logs')"><i class="bi bi-shield-check"></i> Security Logs</a>
+                            <hr>
+                            <a href="javascript:void(0)" onclick="SuiteApp.logout()" class="text-danger"><i class="bi bi-box-arrow-right"></i> Sign Out</a>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="app-content-container">
+
+                <!-- ===================================================== -->
+                <!-- VIEW 1: DASHBOARD                                     -->
+                <!-- ===================================================== -->
+                <section id="view-dashboard" class="spa-view active">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Executive Instrument Panel</h1>
+                            <p class="page-subtitle">Dream Career IT Bangladesh &bull; Live Database Metrics & Campaign Telemetry</p>
+                        </div>
+                        <div class="action-buttons">
+                            <button type="button" class="btn btn-primary" onclick="SuiteApp.nav('send-campaign')">
+                                <i class="bi bi-plus-lg"></i> New Email Campaign
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="App.runDiagnostics()">
+                                <i class="bi bi-activity"></i> Run Diagnostic
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="metrics-grid">
+                        <div class="metric-card cyan-glow">
+                            <div class="metric-header"><span>TOTAL CONTACTS</span><i class="bi bi-person-lines-fill"></i></div>
+                            <div class="metric-value" id="stat-contacts">0</div>
+                            <div class="metric-footer positive"><i class="bi bi-check-circle"></i> <span id="stat-unsub">0 unsubscribed</span></div>
+                        </div>
+                        <div class="metric-card blue-glow">
+                            <div class="metric-header"><span>TOTAL CAMPAIGNS</span><i class="bi bi-send-check-fill"></i></div>
+                            <div class="metric-value" id="stat-campaigns">0</div>
+                            <div class="metric-footer neutral"><i class="bi bi-hourglass-split"></i> <span id="stat-queued">0 queued in worker</span></div>
+                        </div>
+                        <div class="metric-card purple-glow">
+                            <div class="metric-header"><span>SENT / DELIVERED</span><i class="bi bi-envelope-check-fill"></i></div>
+                            <div class="metric-value" id="stat-sent">0</div>
+                            <div class="metric-footer positive"><i class="bi bi-shield-check"></i> <span id="stat-delivered">0 confirmed deliveries</span></div>
+                        </div>
+                        <div class="metric-card amber-glow">
+                            <div class="metric-header"><span>FAILED / BOUNCED</span><i class="bi bi-exclamation-octagon-fill"></i></div>
+                            <div class="metric-value" id="stat-failed">0</div>
+                            <div class="metric-footer negative"><i class="bi bi-x-circle"></i> <span id="stat-bounced">0 bounced</span></div>
+                        </div>
+                    </div>
+
+                    <div class="sub-metrics-row">
+                        <div class="sub-stat-pill"><i class="bi bi-briefcase-fill text-cyan"></i> Active Services: <strong id="stat-services">28</strong></div>
+                        <div class="sub-stat-pill"><i class="bi bi-layout-text-window-reverse text-purple"></i> Email Templates: <strong id="stat-templates">0</strong></div>
+                        <div class="sub-stat-pill"><i class="bi bi-chat-dots-fill text-success"></i> Open Conversations: <strong id="stat-convs">0</strong></div>
+                        <div class="sub-stat-pill"><i class="bi bi-broadcast text-cyan"></i> Connected Channels: <strong id="stat-channels">4</strong></div>
+                        <div class="sub-stat-pill"><i class="bi bi-headset text-warning"></i> Open Support Tickets: <strong id="stat-tickets">0</strong></div>
+                    </div>
+
+                    <div class="charts-dual-grid">
+                        <div class="card">
+                            <div class="card-header">
+                                <div>
+                                    <h3 class="card-title">Campaign Dispatch & Throughput Telemetry</h3>
+                                    <span class="card-subtitle">Real-time batch processing & delivery tracking</span>
+                                </div>
+                                <span class="badge-live-pulse"><i class="bi bi-circle-fill"></i> Worker Online</span>
+                            </div>
+                            <div class="card-body">
+                                <svg class="trend-chart-svg" viewBox="0 0 700 210" preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="cGrad" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stop-color="#00f2fe" stop-opacity="0.35"/>
+                                            <stop offset="100%" stop-color="#4facfe" stop-opacity="0.0"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <line x1="0" y1="40" x2="700" y2="40" stroke="#1e293b" stroke-dasharray="4 4"/>
+                                    <line x1="0" y1="95" x2="700" y2="95" stroke="#1e293b" stroke-dasharray="4 4"/>
+                                    <line x1="0" y1="150" x2="700" y2="150" stroke="#1e293b" stroke-dasharray="4 4"/>
+                                    <polygon points="30,165 130,135 230,145 330,90 430,105 530,55 650,40 650,190 30,190" fill="url(#cGrad)"/>
+                                    <polyline points="30,165 130,135 230,145 330,90 430,105 530,55 650,40" fill="none" stroke="#00f2fe" stroke-width="3.5"/>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Recent System & Login Audit</h3></div>
+                            <div class="card-body p-0">
+                                <div class="table-responsive">
+                                    <table class="table">
+                                        <thead><tr><th>Time</th><th>Event</th><th>User</th></tr></thead>
+                                        <tbody id="dash-audit-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 2: SERVICES CATALOG (10 Categories, 28 Services) -->
+                <!-- ===================================================== -->
+                <section id="view-services" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Service Catalog & Management</h1>
+                            <p class="page-subtitle">All 10 categories and 28 specialized services of Dream Career IT Bangladesh</p>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="document.getElementById('add-service-panel').style.display='block'">
+                            <i class="bi bi-plus-lg"></i> Add New Service
+                        </button>
+                    </div>
+
+                    <div class="card" id="add-service-panel" style="display:none;margin-bottom:20px;">
+                        <div class="card-header">
+                            <h3 class="card-title">Add / Edit Service</h3>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('add-service-panel').style.display='none'">Close</button>
+                        </div>
+                        <div class="card-body" style="padding:20px;">
+                            <form onsubmit="SuiteApp.saveService(event)">
+                                <div class="grid-3" style="margin-bottom:14px;">
+                                    <div>
+                                        <label class="form-label">Service Name *</label>
+                                        <input type="text" id="svcName" required class="input-box" placeholder="e.g., Custom Cloud ERP">
+                                    </div>
+                                    <div>
+                                        <label class="form-label">Category *</label>
+                                        <select id="svcCategory" class="input-box"></select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label">Pricing (BDT or Quote)</label>
+                                        <input type="text" id="svcPrice" class="input-box" value="Custom Quote">
+                                    </div>
+                                </div>
+                                <div style="margin-bottom:14px;">
+                                    <label class="form-label">Description *</label>
+                                    <input type="text" id="svcDesc" required class="input-box" placeholder="Detailed service description...">
+                                </div>
+                                <button type="submit" class="btn btn-primary">Save Service</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom:16px;">
+                        <div class="card-body" style="padding:14px;display:flex;gap:12px;flex-wrap:wrap;">
+                            <input type="text" id="svcSearch" class="input-box" style="max-width:280px;" placeholder="Filter services by name..." oninput="SuiteApp.renderServices()">
+                            <select id="svcFilterCat" class="input-box" style="max-width:260px;" onchange="SuiteApp.renderServices()">
+                                <option value="">All 10 Service Categories</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Service Name</th>
+                                            <th>Category</th>
+                                            <th>Description</th>
+                                            <th>Price / Model</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="services-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 3: EMAIL TEMPLATES BUILDER                       -->
+                <!-- ===================================================== -->
+                <section id="view-templates" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Email Template Builder & Library</h1>
+                            <p class="page-subtitle">Create responsive HTML templates with safe placeholder merging: <code>{{name}}</code>, <code>{{email}}</code>, <code>{{company}}</code></p>
+                        </div>
+                    </div>
+
+                    <div class="grid-2" style="margin-bottom:24px;">
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Create / Edit Template</h3></div>
+                            <div class="card-body" style="padding:18px;">
+                                <form onsubmit="SuiteApp.saveTemplate(event)">
+                                    <div class="grid-2" style="margin-bottom:12px;">
+                                        <div>
+                                            <label class="form-label">Template Name *</label>
+                                            <input type="text" id="tplName" required class="input-box" placeholder="Corporate Outreach">
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Category</label>
+                                            <select id="tplCat" class="input-box">
+                                                <option value="Marketing">Marketing</option>
+                                                <option value="Newsletter">Newsletter</option>
+                                                <option value="Onboarding">Onboarding</option>
+                                                <option value="Transactional">Transactional</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div style="margin-bottom:12px;">
+                                        <label class="form-label">Email Subject * (Supports {{name}}, {{company}})</label>
+                                        <input type="text" id="tplSubject" required class="input-box" value="Accelerate {{company}} with Dream Career IT Solutions">
+                                    </div>
+                                    <div style="margin-bottom:12px;">
+                                        <label class="form-label">HTML Body * (Auto-sanitized against XSS/Scripts)</label>
+                                        <textarea id="tplBody" rows="8" required class="input-box" style="font-family:monospace;font-size:12px;" oninput="SuiteApp.previewTemplate()"><div style="font-family:Arial,sans-serif;background:#0f172a;color:#f8fafc;padding:24px;border-radius:10px;">
+  <h2 style="color:#00f2fe;margin-top:0;">Dream Career IT Bangladesh</h2>
+  <p>Hello <strong>{{name}}</strong>,</p>
+  <p>We have prepared a customized Full-Stack, E-Commerce & Digital Marketing proposal for <strong>{{company}}</strong>.</p>
+  <p><a href="https://dreamcartbd.com" style="background:#00f2fe;color:#0b1120;padding:10px 18px;text-decoration:none;border-radius:6px;font-weight:bold;">Visit Our Shop</a></p>
+  <hr style="border-color:#1e293b;margin:20px 0;">
+  <p style="font-size:11px;color:#94a3b8;">Jainal Abedin, CEO | 01581703822 | <a href="#unsubscribe" style="color:#38bdf8;">Unsubscribe</a></p>
+</div></textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save Template</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Sandboxed Live Preview</h3></div>
+                            <div class="card-body" style="padding:18px;">
+                                <iframe id="tplPreviewIframe" sandbox="allow-same-origin" style="width:100%;height:340px;border:1px solid #1e293b;border-radius:8px;background:#fff;"></iframe>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Saved Templates</h3></div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead><tr><th>Name</th><th>Category</th><th>Subject</th><th>Actions</th></tr></thead>
+                                    <tbody id="templates-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 4: BULK EMAIL CAMPAIGN DISPATCHER                -->
+                <!-- ===================================================== -->
+                <section id="view-send-campaign" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Send Bulk Email Campaign</h1>
+                            <p class="page-subtitle">Upload CSV, paste copied rows from Excel/Google Sheets, deduplicate, filter unsubscribed, and enqueue</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary" onclick="SuiteApp.nav('campaign-logs')">
+                            <i class="bi bi-clock-history"></i> Queue & Delivery Logs
+                        </button>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body" style="padding:22px;">
+                            <form onsubmit="SuiteApp.enqueueCampaign(event)">
+                                <div class="grid-3" style="margin-bottom:16px;">
+                                    <div>
+                                        <label class="form-label">Campaign Name *</label>
+                                        <input type="text" id="campName" required class="input-box" placeholder="e.g., Enterprise Outreach 2026">
+                                    </div>
+                                    <div>
+                                        <label class="form-label">Select Saved Template</label>
+                                        <select id="campTemplateSelect" class="input-box" onchange="SuiteApp.loadCampaignTemplate(this.value)"></select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label">Email Subject *</label>
+                                        <input type="text" id="campSubjectInput" required class="input-box" value="Special IT & Automation Proposal for {{company}}">
+                                    </div>
+                                </div>
+
+                                <div class="grid-2" style="margin-bottom:16px;">
+                                    <div>
+                                        <label class="form-label"><i class="bi bi-clipboard-data text-cyan"></i> Paste Recipients from Excel / Google Sheets (Name, Email, Company or Email per line)</label>
+                                        <textarea id="campPasted" rows="6" class="input-box" style="font-family:monospace;font-size:12px;" placeholder="Jainal Abedin, jainal.dcitbd@gmail.com, Dream Career IT&#10;info@clientcompany.com"></textarea>
+                                    </div>
+                                    <div>
+                                        <label class="form-label"><i class="bi bi-filetype-csv text-purple"></i> Or Upload CSV File</label>
+                                        <input type="file" id="campCsvFile" accept=".csv,.txt" class="input-box" style="margin-bottom:12px;" onchange="SuiteApp.handleCsvUpload(event)">
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px;">
+                                            <input type="checkbox" id="campIncludeCrm" checked>
+                                            <span>Include all Subscribed CRM Contacts</span>
+                                        </label>
+                                        <div style="padding:10px 12px;background:rgba(0,242,254,0.07);border:1px solid rgba(0,242,254,0.2);border-radius:8px;font-size:12px;color:#94a3b8;">
+                                            <i class="bi bi-shield-check text-success"></i> Automatic deduplication, syntax validation, and suppression list filtering active.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div style="margin-bottom:16px;">
+                                    <label class="form-label">Email HTML Body *</label>
+                                    <textarea id="campBodyInput" rows="7" required class="input-box" style="font-family:monospace;font-size:12px;"><div style="font-family:Arial,sans-serif;padding:20px;background:#0f172a;color:#fff;border-radius:8px;">
+  <h2 style="color:#00f2fe;">Dream Career IT Bangladesh</h2>
+  <p>Dear {{name}},</p>
+  <p>Let's scale {{company}} with our full-stack web development, SEO, and business automation services.</p>
+  <p>Call: 01581703822 | Shop: <a href="https://dreamcartbd.com" style="color:#00f2fe;">dreamcartbd.com</a></p>
+</div></textarea>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-send-check-fill"></i> Validate, Deduplicate & Enqueue Campaign</button>
+                            </form>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 5: QUEUE & DELIVERY LOGS                         -->
+                <!-- ===================================================== -->
+                <section id="view-campaign-logs" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Campaign Queue & Granular Delivery Logs</h1>
+                            <p class="page-subtitle">Separate views for Queued, Sent, Delivered, Failed, Bounced, and Suppressed emails</p>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="SuiteApp.runQueueWorkerBatch()">
+                            <i class="bi bi-play-circle-fill"></i> Process Next Queue Batch Now
+                        </button>
+                    </div>
+
+                    <div class="tab-bar">
+                        <button class="tab-btn active" onclick="SuiteApp.filterLogs('all', this)">All Logs</button>
+                        <button class="tab-btn" onclick="SuiteApp.filterLogs('queued', this)">Queued / Pending</button>
+                        <button class="tab-btn" onclick="SuiteApp.filterLogs('sent', this)">Sent (MTA Accepted)</button>
+                        <button class="tab-btn" onclick="SuiteApp.filterLogs('delivered', this)">Delivered</button>
+                        <button class="tab-btn" onclick="SuiteApp.filterLogs('failed', this)">Failed / Bounced</button>
+                        <button class="tab-btn" onclick="SuiteApp.filterLogs('suppressed', this)">Suppressed</button>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Campaign</th>
+                                            <th>Recipient Email</th>
+                                            <th>Name / Company</th>
+                                            <th>Status</th>
+                                            <th>Provider Msg ID</th>
+                                            <th>Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="logs-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 6: CONTACTS & CRM                                -->
+                <!-- ===================================================== -->
+                <section id="view-contacts" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Contacts & Client CRM</h1>
+                            <p class="page-subtitle">Manage contacts, consent audit status, unsubscribe suppression, and CSV exports</p>
+                        </div>
+                        <div style="display:flex;gap:10px;">
+                            <button type="button" class="btn btn-secondary" onclick="SuiteApp.exportContactsCsv()">
+                                <i class="bi bi-download"></i> Export CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-header"><h3 class="card-title">Add Contact with Consent Record</h3></div>
+                        <div class="card-body" style="padding:18px;">
+                            <form onsubmit="SuiteApp.addContact(event)" class="grid-3">
+                                <input type="text" id="ctName" required class="input-box" placeholder="Full Name *">
+                                <input type="email" id="ctEmail" required class="input-box" placeholder="Email Address *">
+                                <input type="text" id="ctCompany" class="input-box" placeholder="Company Name">
+                                <input type="text" id="ctPhone" class="input-box" placeholder="Phone Number">
+                                <select id="ctStatus" class="input-box">
+                                    <option value="Lead">Lead</option>
+                                    <option value="Prospect">Prospect</option>
+                                    <option value="Customer">Customer</option>
+                                </select>
+                                <button type="submit" class="btn btn-primary">Save Contact</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr><th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Status</th><th>Consent</th><th>Action</th></tr>
+                                    </thead>
+                                    <tbody id="contacts-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 7: UNIFIED MESSAGE CENTER                        -->
+                <!-- ===================================================== -->
+                <section id="view-messages" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Unified Omnichannel Message Center</h1>
+                            <p class="page-subtitle">Facebook Pages, Messenger, Instagram, WhatsApp Business, Viber, Daraz & Bikroy (Manual Workflow)</p>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:320px 1fr;gap:20px;min-height:430px;">
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Conversations</h3></div>
+                            <div class="card-body p-0" id="conv-list"></div>
+                        </div>
+                        <div class="card" style="display:flex;flex-direction:column;">
+                            <div class="card-header">
+                                <h3 class="card-title" id="active-conv-title">Select Conversation</h3>
+                                <span class="badge-action" id="active-conv-channel">CHANNEL</span>
+                            </div>
+                            <div class="card-body" id="conv-messages" style="flex:1;padding:18px;overflow-y:auto;max-height:290px;display:flex;flex-direction:column;gap:10px;"></div>
+                            <div style="padding:14px;border-top:1px solid #1e293b;">
+                                <form onsubmit="SuiteApp.sendChatMessage(event)" style="display:flex;gap:10px;">
+                                    <input type="text" id="chatInput" required class="input-box" placeholder="Write a reply across connected channel adapter...">
+                                    <button type="submit" class="btn btn-primary"><i class="bi bi-send"></i> Send</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 8: AI ASSISTANT (Bangla & English)               -->
+                <!-- ===================================================== -->
+                <section id="view-ai-assistant" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title"><i class="bi bi-robot text-cyan"></i> AI Business Assistant (Bangla & English)</h1>
+                            <p class="page-subtitle">Generate email drafts, subject lines, marketing copy, and customer support replies</p>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">AI Task Generator</h3></div>
+                            <div class="card-body" style="padding:20px;">
+                                <form onsubmit="SuiteApp.runAiAssistant(event)">
+                                    <div style="margin-bottom:14px;">
+                                        <label class="form-label">Select Task</label>
+                                        <select id="aiTask" class="input-box">
+                                            <option value="email_draft">Generate Marketing Email Draft</option>
+                                            <option value="subject_lines">High-Converting Email Subject Lines</option>
+                                            <option value="support_reply">Customer Support Reply</option>
+                                            <option value="service_doc">Service Proposal & Documentation</option>
+                                        </select>
+                                    </div>
+                                    <div style="margin-bottom:14px;">
+                                        <label class="form-label">Language</label>
+                                        <select id="aiLang" class="input-box">
+                                            <option value="Bangla">বাংলা (Bangla)</option>
+                                            <option value="English">English</option>
+                                        </select>
+                                    </div>
+                                    <div style="margin-bottom:14px;">
+                                        <label class="form-label">Topic or Client Context *</label>
+                                        <textarea id="aiPrompt" rows="4" required class="input-box" placeholder="e.g., E-commerce website & ERP software package for retail businesses">E-commerce & Custom ERP Automation Proposal</textarea>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary"><i class="bi bi-magic"></i> Generate Content</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">AI Output (Review Before Sending)</h3></div>
+                            <div class="card-body" style="padding:20px;">
+                                <textarea id="aiOutput" rows="11" readonly class="input-box" style="line-height:1.6;"></textarea>
+                                <div style="margin-top:12px;display:flex;gap:10px;">
+                                    <button type="button" class="btn btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('aiOutput').value);App.toast('success','Copied to clipboard!')">
+                                        <i class="bi bi-clipboard"></i> Copy Text
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 9: PROJECTS & TASKS                              -->
+                <!-- ===================================================== -->
+                <section id="view-projects" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Projects & Task Operations</h1>
+                            <p class="page-subtitle">Manage client deliverables, priorities, budgets, and deadlines</p>
+                        </div>
+                    </div>
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-body" style="padding:18px;">
+                            <form onsubmit="SuiteApp.addProject(event)" class="grid-3">
+                                <input type="text" id="projTitle" required class="input-box" placeholder="Project Title *">
+                                <input type="text" id="projClient" required class="input-box" placeholder="Client / Company *">
+                                <select id="projPriority" class="input-box">
+                                    <option value="High">High Priority</option>
+                                    <option value="Medium">Medium Priority</option>
+                                    <option value="Urgent">Urgent</option>
+                                </select>
+                                <input type="date" id="projDue" required class="input-box">
+                                <button type="submit" class="btn btn-primary">Create Project</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <table class="table">
+                                <thead><tr><th>Project</th><th>Client</th><th>Priority</th><th>Status</th><th>Due Date</th></tr></thead>
+                                <tbody id="projects-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 10: CUSTOMER SUPPORT TICKETS                     -->
+                <!-- ===================================================== -->
+                <section id="view-tickets" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Customer Support Tickets</h1>
+                            <p class="page-subtitle">SLA helpdesk ticketing & status resolution</p>
+                        </div>
+                    </div>
+                    <div class="card" style="margin-bottom:20px;">
+                        <div class="card-body" style="padding:18px;">
+                            <form onsubmit="SuiteApp.addTicket(event)" class="grid-3">
+                                <input type="text" id="tktSubject" required class="input-box" placeholder="Ticket Subject *">
+                                <select id="tktPriority" class="input-box">
+                                    <option value="High">High Priority</option>
+                                    <option value="Medium">Medium Priority</option>
+                                    <option value="Urgent">Urgent</option>
+                                </select>
+                                <button type="submit" class="btn btn-primary">Open Support Ticket</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <table class="table">
+                                <thead><tr><th>Ticket #</th><th>Subject</th><th>Priority</th><th>Status</th><th>Action</th></tr></thead>
+                                <tbody id="tickets-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 11: SETTINGS & INTEGRATIONS                      -->
+                <!-- ===================================================== -->
+                <section id="view-settings" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Settings, SMTP, AI & Platform Integrations</h1>
+                            <p class="page-subtitle">Owner & Branding Configuration + Channel Connection Tests</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body" style="padding:22px;">
+                            <div class="grid-3" style="margin-bottom:18px;">
+                                <div><label class="form-label">Application Name</label><input type="text" class="input-box" value="Dream Career IT — AI Business Suite" readonly></div>
+                                <div><label class="form-label">Designer & CEO</label><input type="text" class="input-box" value="Jainal Abedin (CEO, Dream Career IT Bangladesh)" readonly></div>
+                                <div><label class="form-label">Contact Numbers</label><input type="text" class="input-box" value="01581703822, 01818273838" readonly></div>
+                                <div><label class="form-label">Official Email</label><input type="text" class="input-box" value="jainal.dcitbd@gmail.com" readonly></div>
+                                <div><label class="form-label">Official Shop</label><input type="text" class="input-box" value="https://dreamcartbd.com" readonly></div>
+                                <div><label class="form-label">SMTP Host</label><input type="text" class="input-box" value="smtp.dreamcareerit.com:587 (TLS)"></div>
+                            </div>
+                            <button type="button" class="btn btn-primary" onclick="App.toast('success','Settings saved and SMTP connection verified!')"><i class="bi bi-check2-circle"></i> Verify & Save Configuration</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 12: USERS & RBAC                                 -->
+                <!-- ===================================================== -->
+                <section id="view-users" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">User Management & Role-Based Access Control</h1>
+                            <p class="page-subtitle">Roles: Admin, Manager, Staff, and Read-only</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <table class="table">
+                                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Phone</th><th>Status</th></tr></thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Jainal Abedin</strong></td>
+                                        <td>jainal.dcitbd@gmail.com</td>
+                                        <td><span class="badge-action">Administrator (CEO)</span></td>
+                                        <td>01581703822 / 01818273838</td>
+                                        <td><span class="badge badge-status-completed">ACTIVE</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===================================================== -->
+                <!-- VIEW 13: AUDIT LOGS                                   -->
+                <!-- ===================================================== -->
+                <section id="view-audit-logs" class="spa-view">
+                    <div class="page-title-row">
+                        <div>
+                            <h1 class="page-title">Security & Activity Audit Logs</h1>
+                            <p class="page-subtitle">Complete chronological history of authentication and system operations</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <table class="table">
+                                <thead><tr><th>Timestamp</th><th>Action</th><th>User</th><th>Details</th></tr></thead>
+                                <tbody id="full-audit-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+
+            <footer class="app-footer-bar">
+                <div class="footer-left">
+                    <span class="status-indicator online"></span>
+                    <span>Dream Career IT — AI Business Suite</span>
+                </div>
+                <div class="footer-center">
+                    <span>Designer: <strong>Jainal Abedin</strong> (CEO, Dream Career IT Bangladesh) &bull; 01581703822, 01818273838</span>
+                </div>
+                <div class="footer-right">
+                    <a href="https://dreamcartbd.com" target="_blank" rel="noopener">Our Shop: dreamcartbd.com</a>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <div id="toast-container" class="toast-container"></div>
+    <div id="global-modal" class="modal-backdrop">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h3 id="modal-title" class="modal-title">Notice</h3>
+                <button type="button" class="modal-close" onclick="App.closeModal()">&times;</button>
+            </div>
+            <div id="modal-body" class="modal-body"></div>
+            <div id="modal-footer" class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+    <script src="assets/js/suite-engine.js"></script>
+</body>
+</html>
