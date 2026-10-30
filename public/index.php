@@ -69,12 +69,15 @@ $router->get('/logout', [AuthController::class, 'logout'], [AuthMiddleware::clas
 $router->get('/profile', [SettingController::class, 'users'], [AuthMiddleware::class]);
 
 // ----------------------------------------------------------
-// 3. Service Catalog & Management Routes (10 Categories, 28+ Services)
+// 3. Service Catalog & Category Management Routes (Full CRUD)
 // ----------------------------------------------------------
 $router->get('/services', [ServiceController::class, 'index'], [AuthMiddleware::class]);
 $router->post('/services/store', [ServiceController::class, 'store'], [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/services/update', [ServiceController::class, 'update'], [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/services/delete', [ServiceController::class, 'delete'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/services/category/store', [ServiceController::class, 'storeCategory'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/services/category/update', [ServiceController::class, 'updateCategory'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/services/category/delete', [ServiceController::class, 'deleteCategory'], [AuthMiddleware::class, CsrfMiddleware::class]);
 
 // ----------------------------------------------------------
 // 4. Email Template Builder & Sanitized HTML Editor Routes
@@ -87,19 +90,23 @@ $router->post('/templates/duplicate', [TemplateController::class, 'duplicate'], 
 $router->post('/templates/delete', [TemplateController::class, 'delete'], [AuthMiddleware::class, CsrfMiddleware::class]);
 
 // ----------------------------------------------------------
-// 5. Bulk Email Campaigns, CSV/Paste Import & Queue Worker Routes
+// 5. Bulk Email Campaigns, CSV/Paste Import, Queue & API Routes
 // ----------------------------------------------------------
 $router->get('/campaigns/send', [CampaignController::class, 'showSend'], [AuthMiddleware::class]);
 $router->post('/campaigns/enqueue', [CampaignController::class, 'enqueueCampaign'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/api/send-email', [CampaignController::class, 'apiSendEmail']);
 $router->get('/campaigns/logs', [CampaignController::class, 'logs'], [AuthMiddleware::class]);
 $router->post('/campaigns/process-queue', [CampaignController::class, 'processQueueNow'], [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/campaigns/control', [CampaignController::class, 'pauseOrCancel'], [AuthMiddleware::class, CsrfMiddleware::class]);
 
 // ----------------------------------------------------------
-// 6. Contacts, Client CRM & CSV Export Routes
+// 6. Contacts, Client CRM & CSV Export Routes (Full CRUD)
 // ----------------------------------------------------------
 $router->get('/contacts', [ContactController::class, 'index'], [AuthMiddleware::class]);
 $router->post('/contacts/store', [ContactController::class, 'store'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/contacts/update', [ContactController::class, 'update'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/contacts/delete', [ContactController::class, 'delete'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/contacts/toggle-consent', [ContactController::class, 'toggleConsent'], [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->get('/contacts/export', [ContactController::class, 'exportCsv'], [AuthMiddleware::class]);
 
 // ----------------------------------------------------------
@@ -116,15 +123,18 @@ $router->get('/ai-assistant', [AiController::class, 'index'], [AuthMiddleware::c
 $router->post('/ai-assistant/generate', [AiController::class, 'generate'], [AuthMiddleware::class, CsrfMiddleware::class]);
 
 // ----------------------------------------------------------
-// 9. Projects, Tasks & Customer Support Helpdesk Routes
+// 9. Projects, Tasks & Customer Support Helpdesk Routes (Full CRUD)
 // ----------------------------------------------------------
 $router->get('/projects', [ProjectController::class, 'index'], [AuthMiddleware::class]);
 $router->post('/projects/store', [ProjectController::class, 'storeProject'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/projects/update', [ProjectController::class, 'updateProject'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/projects/delete', [ProjectController::class, 'deleteProject'], [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/projects/tasks/store', [ProjectController::class, 'storeTask'], [AuthMiddleware::class, CsrfMiddleware::class]);
 
 $router->get('/tickets', [TicketController::class, 'index'], [AuthMiddleware::class]);
 $router->post('/tickets/store', [TicketController::class, 'store'], [AuthMiddleware::class, CsrfMiddleware::class]);
 $router->post('/tickets/status', [TicketController::class, 'updateStatus'], [AuthMiddleware::class, CsrfMiddleware::class]);
+$router->post('/tickets/delete', [TicketController::class, 'delete'], [AuthMiddleware::class, CsrfMiddleware::class]);
 
 // ----------------------------------------------------------
 // 10. System Settings, Users (RBAC) & Security Audit Logs

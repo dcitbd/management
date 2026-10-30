@@ -69,10 +69,30 @@ class TicketController
     {
         $id = (int)$request->input('ticket_id', 0);
         $status = trim((string)$request->input('status', 'open'));
+        $subject = trim((string)$request->input('subject', ''));
+        $priority = trim((string)$request->input('priority', ''));
+
         if ($id > 0 && in_array($status, ['open', 'pending', 'resolved', 'closed'], true)) {
-            Database::pdo()->prepare("UPDATE support_tickets SET status = ? WHERE id = ?")->execute([$status, $id]);
+            if ($subject !== '' && $priority !== '') {
+                Database::pdo()->prepare("UPDATE support_tickets SET subject = ?, priority = ?, status = ? WHERE id = ?")
+                    ->execute([$subject, $priority, $status, $id]);
+            } else {
+                Database::pdo()->prepare("UPDATE support_tickets SET status = ? WHERE id = ?")
+                    ->execute([$status, $id]);
+            }
             Logger::audit('ticket_status_updated', 'SupportTicket', $id, null, ['status' => $status]);
-            Session::setFlash('success', 'Ticket status updated.');
+            Session::setFlash('success', 'Ticket updated.');
+        }
+        Response::redirect('/tickets');
+    }
+
+    public function delete(Request $request): void
+    {
+        $id = (int)$request->input('ticket_id', 0);
+        if ($id > 0) {
+            Database::pdo()->prepare("DELETE FROM support_tickets WHERE id = ?")->execute([$id]);
+            Logger::audit('ticket_deleted', 'SupportTicket', $id);
+            Session::setFlash('success', 'Support ticket deleted.');
         }
         Response::redirect('/tickets');
     }

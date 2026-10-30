@@ -19,7 +19,11 @@ class ServiceController
         $search = trim((string)$request->input('q', ''));
         $status = $request->input('status');
 
-        $categories = $db->query("SELECT * FROM service_categories ORDER BY sort_order ASC")->fetchAll();
+        $categories = $db->query("
+            SELECT c.*, (SELECT COUNT(*) FROM services s WHERE s.category_id = c.id) AS service_count
+            FROM service_categories c
+            ORDER BY c.sort_order ASC, c.id ASC
+        ")->fetchAll();
 
         $sql = "
             SELECT s.*, c.name as category_name
@@ -49,7 +53,7 @@ class ServiceController
         $services = $stmt->fetchAll();
 
         View::render('services/index', [
-            'title' => 'Services Catalog & Management — Dream Career IT',
+            'title' => 'Services Catalog & Category Management — Dream Career IT',
             'categories' => $categories,
             'services' => $services,
             'filters' => [
@@ -70,9 +74,9 @@ class ServiceController
         $name = trim((string)$request->input('name', ''));
         $shortDesc = trim((string)$request->input('short_description', ''));
         $fullDesc = trim((string)$request->input('full_description', ''));
-        $priceBdt = $request->input('price_bdt') !== '' ? (float)$request->input('price_bdt') : null;
+        $priceBdt = $request->input('price_bdt') !== '' && $request->input('price_bdt') !== null ? (float)$request->input('price_bdt') : null;
         $priceModel = trim((string)$request->input('price_model', 'Custom Quote'));
-        $iconClass = trim((string)$request->input('icon_class', 'bi-gear-fill'));
+        $iconClass = trim((string)$request->input('icon_class', 'bi-layers-fill'));
         $isActive = (int)$request->input('is_active', 1);
 
         if ($name === '' || $categoryId <= 0) {
@@ -91,7 +95,7 @@ class ServiceController
         $id = (int)$db->lastInsertId();
 
         Logger::audit('service_created', 'Service', $id, null, ['name' => $name, 'category_id' => $categoryId]);
-        Session::setFlash('success', "Service '{$name}' created successfully.");
+        Session::setFlash('success', "Service '{$name}' added to catalog.");
         Response::redirect('/services');
     }
 
@@ -103,11 +107,12 @@ class ServiceController
         $name = trim((string)$request->input('name', ''));
         $shortDesc = trim((string)$request->input('short_description', ''));
         $fullDesc = trim((string)$request->input('full_description', ''));
-        $priceBdt = $request->input('price_bdt') !== '' ? (float)$request->input('price_bdt') : null;
+        $priceBdt = $request->input('price_bdt') !== '' && $request->input('price_bdt') !== null ? (float)$request->input('price_bdt') : null;
         $priceModel = trim((string)$request->input('price_model', 'Custom Quote'));
+        $iconClass = trim((string)$request->input('icon_class', 'bi-layers-fill'));
         $isActive = (int)$request->input('is_active', 1);
 
-        if ($id <= 0 || $name === '') {
+        if ($id <= 0 || $name === '' || $categoryId <= 0) {
             Session::setFlash('error', 'Invalid service update data.');
             Response::redirect('/services');
             return;
@@ -115,13 +120,13 @@ class ServiceController
 
         $stmt = $db->prepare("
             UPDATE services
-            SET category_id = ?, name = ?, short_description = ?, full_description = ?, price_bdt = ?, price_model = ?, is_active = ?
+            SET category_id = ?, name = ?, short_description = ?, full_description = ?, icon_class = ?, price_bdt = ?, price_model = ?, is_active = ?
             WHERE id = ?
         ");
-        $stmt->execute([$categoryId, $name, $shortDesc, $fullDesc, $priceBdt, $priceModel, $isActive, $id]);
+        $stmt->execute([$categoryId, $name, $shortDesc, $fullDesc, $iconClass, $priceBdt, $priceModel, $isActive, $id]);
 
         Logger::audit('service_updated', 'Service', $id, null, ['name' => $name, 'is_active' => $isActive]);
-        Session::setFlash('success', "Service '{$name}' updated.");
+        Session::setFlash('success', "Service '{$name}' updated successfully.");
         Response::redirect('/services');
     }
 
@@ -133,6 +138,67 @@ class ServiceController
             $stmt->execute([$id]);
             Logger::audit('service_deleted', 'Service', $id);
             Session::setFlash('success', 'Service removed from catalog.');
+        }
+        Response::redirect('/services');
+    }
+
+    public function storeCategory(Request $request): void
+    {
+        $db = Database::pdo();
+        $name = trim((string)$request->input('name', ''));
+        $description = trim((string)$request->input('description', ''));
+        $iconClass = trim((string)$request->input('icon_class', 'bi-grid-1x2-fill'));
+
+        if ($name === '') {
+            Session::setFlash('error', 'Category name is required.');
+            Response::redirect('/services');
+            return;
+        }
+
+        $slug = strtolower(trim(preg_replace('/[^A-Za-z0-9-]+/', '-', $name), '-')) . '-' . substr(uniqid(), -3);
+        $maxOrder = (int)$db->query("SELECT COALESCE(MAX(sort_order), 0) FROM service_categories")->fetchColumn();
+
+        $stmt = $db->prepare("
+            INSERT INTO service_categories (name, slug, description, icon_class, sort_order, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+        ");
+        $stmt->execute([$name, $slug, $description, $iconClass, $maxOrder + 1]);
+        $catId = (int)$db->lastInsertId();
+
+        Logger::audit('category_created', 'ServiceCategory', $catId, null, ['name' => $name]);
+        Session::setFlash('success', "Catalog Category '{$name}' created.");
+        Response::redirect('/services');
+    }
+
+    public function updateCategory(Request $request): void
+    {
+        $db = Database::pdo();
+        $id = (int)$request->input('id');
+        $name = trim((string)$request->input('name', ''));
+        $description = trim((string)$request->input('description', ''));
+
+        if ($id <= 0 || $name === '') {
+            Session::setFlash('error', 'Valid category ID and name are required.');
+            Response::redirect('/services');
+            return;
+        }
+
+        $stmt = $db->prepare("UPDATE service_categories SET name = ?, description = ? WHERE id = ?");
+        $stmt->execute([$name, $description, $id]);
+
+        Logger::audit('category_updated', 'ServiceCategory', $id, null, ['name' => $name]);
+        Session::setFlash('success', "Category '{$name}' updated.");
+        Response::redirect('/services');
+    }
+
+    public function deleteCategory(Request $request): void
+    {
+        $db = Database::pdo();
+        $id = (int)$request->input('id');
+        if ($id > 0) {
+            $db->prepare("DELETE FROM service_categories WHERE id = ?")->execute([$id]);
+            Logger::audit('category_deleted', 'ServiceCategory', $id);
+            Session::setFlash('success', 'Catalog category deleted.');
         }
         Response::redirect('/services');
     }

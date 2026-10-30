@@ -107,6 +107,60 @@ class ContactController
         Response::redirect('/contacts');
     }
 
+    public function update(Request $request): void
+    {
+        $db = Database::pdo();
+        $id = (int)$request->input('id', 0);
+        $email = strtolower(trim((string)$request->input('email', '')));
+        $firstName = trim((string)$request->input('first_name', ''));
+        $lastName = trim((string)$request->input('last_name', ''));
+        $phone = trim((string)$request->input('phone', ''));
+        $company = trim((string)$request->input('company', ''));
+        $leadStatus = trim((string)$request->input('lead_status', 'lead'));
+        $isSubscribed = (int)$request->input('is_subscribed', 1);
+
+        if ($id <= 0 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Session::setFlash('error', 'Valid Contact ID and Email Address are required.');
+            Response::redirect('/contacts');
+            return;
+        }
+
+        $stmt = $db->prepare("
+            UPDATE contacts
+            SET first_name = ?, last_name = ?, email = ?, phone = ?, company = ?, lead_status = ?, is_subscribed = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([$firstName, $lastName, $email, $phone, $company, $leadStatus, $isSubscribed, $id]);
+
+        Logger::audit('contact_updated', 'Contact', $id, null, ['email' => $email]);
+        Session::setFlash('success', "Contact {$email} updated.");
+        Response::redirect('/contacts');
+    }
+
+    public function toggleConsent(Request $request): void
+    {
+        $db = Database::pdo();
+        $id = (int)$request->input('id', 0);
+        if ($id > 0) {
+            $db->prepare("UPDATE contacts SET is_subscribed = IF(is_subscribed = 1, 0, 1) WHERE id = ?")->execute([$id]);
+            Logger::audit('contact_consent_toggled', 'Contact', $id);
+            Session::setFlash('success', 'Contact subscription consent status updated.');
+        }
+        Response::redirect('/contacts');
+    }
+
+    public function delete(Request $request): void
+    {
+        $db = Database::pdo();
+        $id = (int)$request->input('id', 0);
+        if ($id > 0) {
+            $db->prepare("DELETE FROM contacts WHERE id = ?")->execute([$id]);
+            Logger::audit('contact_deleted', 'Contact', $id);
+            Session::setFlash('success', 'Contact deleted from CRM.');
+        }
+        Response::redirect('/contacts');
+    }
+
     public function exportCsv(Request $request): void
     {
         $db = Database::pdo();

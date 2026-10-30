@@ -18,7 +18,6 @@ class SettingController
         $rows = $db->query("SELECT setting_key, setting_value, is_encrypted FROM settings")->fetchAll();
         $settings = [];
         foreach ($rows as $r) {
-            // Never expose raw encrypted secrets in full
             $settings[$r['setting_key']] = $r['is_encrypted'] ? '••••••••••••' : $r['setting_value'];
         }
 
@@ -39,8 +38,8 @@ class SettingController
         $db = Database::pdo();
         $allowedKeys = [
             'app_name', 'company_name', 'company_ceo', 'company_phone_1', 'company_phone_2',
-            'company_email', 'company_shop_url', 'smtp_host', 'smtp_port', 'smtp_encryption',
-            'rate_limit_per_minute', 'default_provider', 'max_tokens'
+            'company_email', 'company_shop_url', 'smtp_host', 'smtp_port', 'smtp_user',
+            'smtp_pass', 'smtp_encryption', 'rate_limit_per_minute', 'default_provider', 'max_tokens'
         ];
 
         $stmt = $db->prepare("
@@ -51,13 +50,13 @@ class SettingController
 
         foreach ($allowedKeys as $key) {
             $val = $request->input($key);
-            if ($val !== null) {
+            if ($val !== null && trim((string)$val) !== '••••••••••••') {
                 $stmt->execute([$key, trim((string)$val)]);
             }
         }
 
         Logger::audit('settings_updated', 'Settings');
-        Session::setFlash('success', 'System and provider settings updated safely.');
+        Session::setFlash('success', 'System and SMTP settings updated safely.');
         Response::redirect('/settings');
     }
 

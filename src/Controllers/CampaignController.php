@@ -10,6 +10,7 @@ use App\Core\Database;
 use App\Core\Logger;
 use App\Core\Session;
 use App\Services\EmailQueueWorker;
+use App\Services\MailerService;
 use App\Controllers\TemplateController;
 
 class CampaignController
@@ -54,60 +55,32 @@ class CampaignController
         $safeHtml = TemplateController::sanitizeTemplateHtml($rawHtml);
         $plainText = trim(strip_tags($safeHtml));
 
-        $rawCandidates = [];
-
-        if (trim($pastedRecipients) !== '') {
-            $lines = preg_split('/\r\n|\r|\n/', trim($pastedRecipients));
-            foreach ($lines as $line) {
-                $line = trim($line);
-                if ($line === '') continue;
-                $parts = preg_split('/[\t,;]+/', $line);
-                foreach ($parts as $part) {
-                    $part = trim($part);
-                    if (filter_var($part, FILTER_VALIDATE_EMAIL)) {
-                        $rawCandidates[] = [
-                            'email' => strtolower($part),
-                            'name' => $parts[0] !== $part ? trim($parts[0]) : '',
-                            'company' => $parts[2] ?? ''
-                        ];
-                    }
-                }
-            }
-        }
+        $rawCandidates = MailerService::extractEmailsFromText($pastedRecipients);
 
         if (!empty($_FILES['csv_file']['tmp_name']) && is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
-            $fh = fopen($_FILES['csv_file']['tmp_name'], 'r');
-            if ($fh !== false) {
-                while (($row = fgetcsv($fh)) !== false) {
-                    foreach ($row as $cell) {
-                        $cell = trim((string)$cell);
-                        if (filter_var($cell, FILTER_VALIDATE_EMAIL)) {
-                            $rawCandidates[] = [
-                                'email' => strtolower($cell),
-                                'name' => isset($row[0]) && $row[0] !== $cell ? trim((string)$row[0]) : '',
-                                'company' => isset($row[2]) ? trim((string)$row[2]) : ''
-                            ];
-                            break;
-                        }
-                    }
-                }
-                fclose($fh);
+            $csvContent = (string)file_get_contents($_FILES['csv_file']['tmp_name']);
+            $csvExtracted = MailerService::extractEmailsFromText($csvContent);
+            foreach ($csvExtracted as $ce) {
+                $rawCandidates[] = $ce;
             }
         }
 
         if ($includeAllSubscribed) {
             $crmRows = $db->query("SELECT first_name, last_name, email, company FROM contacts WHERE is_subscribed = 1")->fetchAll();
             foreach ($crmRows as $cr) {
-                $rawCandidates[] = [
-                    'email' => strtolower(trim($cr['email'])),
-                    'name' => trim($cr['first_name'] . ' ' . $cr['last_name']),
-                    'company' => (string)$cr['company']
-                ];
+                $em = strtolower(trim((string)$cr['email']));
+                if (filter_var($em, FILTER_VALIDATE_EMAIL)) {
+                    $rawCandidates[] = [
+                        'email' => $em,
+                        'name' => trim($cr['first_name'] . ' ' . $cr['last_name']) ?: 'Valued Client',
+                        'company' => (string)$cr['company']
+                    ];
+                }
             }
         }
 
         if (empty($rawCandidates)) {
-            Session::setFlash('error', 'No valid email addresses were provided via paste, CSV upload, or CRM selection.');
+            Session::setFlash('error', 'No valid email addresses were found. Please enter one or more valid email IDs.');
             Response::redirect('/campaigns/send');
             return;
         }
@@ -115,17 +88,17 @@ class CampaignController
         $suppressedMap = [];
         $supRows = $db->query("SELECT email FROM suppression_list")->fetchAll(\PDO::FETCH_COLUMN);
         foreach ($supRows as $se) {
-            $suppressedMap[strtolower($se)] = true;
+            $suppressedMap[strtolower((string)$se)] = true;
         }
         $unsubRows = $db->query("SELECT email FROM contacts WHERE is_subscribed = 0")->fetchAll(\PDO::FETCH_COLUMN);
         foreach ($unsubRows as $ue) {
-            $suppressedMap[strtolower($ue)] = true;
+            $suppressedMap[strtolower((string)$ue)] = true;
         }
 
         $uniqueValid = [];
         $suppressedRecipients = [];
         foreach ($rawCandidates as $cand) {
-            $em = $cand['email'];
+            $em = strtolower(trim($cand['email']));
             if (isset($uniqueValid[$em]) || isset($suppressedRecipients[$em])) {
                 continue;
             }
@@ -173,23 +146,130 @@ class CampaignController
             }
 
             $db->commit();
-            Logger::audit('campaign_queued', 'Campaign', $campaignId, null, [
+
+            // Immediately dispatch emails if not scheduled for a future time
+            $sentNow = 0;
+            if (!$scheduledFor && $totalValid > 0) {
+                $worker = new EmailQueueWorker();
+                $batchRes = $worker->processBatch($campaignId);
+                $sentNow = (int)($batchRes['sent'] ?? 0);
+            }
+
+            Logger::audit('campaign_dispatched', 'Campaign', $campaignId, null, [
                 'valid_queued' => $totalValid,
+                'sent_immediately' => $sentNow,
                 'suppressed_skipped' => $totalSuppressed
             ]);
 
+            $recipientListPreview = implode(', ', array_slice(array_keys($uniqueValid), 0, 5));
+            if (count($uniqueValid) > 5) {
+                $recipientListPreview .= ' +' . (count($uniqueValid) - 5) . ' more';
+            }
+
             Session::setFlash(
                 'success',
-                "Campaign '{$name}' created! Queued {$totalValid} unique verified recipients ({$totalSuppressed} suppressed addresses automatically filtered)."
+                "Campaign '{$name}' submitted & dispatched! Sent immediately to {$sentNow}/{$totalValid} recipient(s) ({$recipientListPreview})."
             );
         } catch (\Throwable $e) {
-            $db->rollBack();
-            Session::setFlash('error', 'Failed to enqueue campaign: ' . $e->getMessage());
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            Session::setFlash('error', 'Failed to dispatch campaign: ' . $e->getMessage());
             Response::redirect('/campaigns/send');
             return;
         }
 
         Response::redirect('/campaigns/logs');
+    }
+
+    /**
+     * Direct JSON API endpoint for sending emails from SPA or AJAX calls
+     */
+    public function apiSendEmail(Request $request): void
+    {
+        header('Content-Type: application/json; charset=utf-8');
+        $subject = trim((string)$request->input('subject', 'Message from Dream Career IT'));
+        $rawHtml = (string)$request->input('body_html', '');
+        $senderName = trim((string)$request->input('sender_name', 'Dream Career IT Bangladesh'));
+        $senderEmail = trim((string)$request->input('sender_email', 'info@dreamcareerit.com'));
+        $recipientsRaw = $request->input('recipients', '');
+
+        $smtpOverride = [
+            'smtp_host' => $request->input('smtp_host'),
+            'smtp_port' => $request->input('smtp_port'),
+            'smtp_user' => $request->input('smtp_user'),
+            'smtp_pass' => $request->input('smtp_pass'),
+            'smtp_encryption' => $request->input('smtp_encryption'),
+        ];
+
+        $candidates = [];
+        if (is_array($recipientsRaw)) {
+            foreach ($recipientsRaw as $item) {
+                if (is_string($item) && filter_var(trim($item), FILTER_VALIDATE_EMAIL)) {
+                    $candidates[] = ['email' => strtolower(trim($item)), 'name' => 'Valued Client', 'company' => ''];
+                } elseif (is_array($item) && !empty($item['email']) && filter_var(trim((string)$item['email']), FILTER_VALIDATE_EMAIL)) {
+                    $candidates[] = [
+                        'email' => strtolower(trim((string)$item['email'])),
+                        'name' => trim((string)($item['name'] ?? 'Valued Client')),
+                        'company' => trim((string)($item['company'] ?? ''))
+                    ];
+                }
+            }
+        } else {
+            $candidates = MailerService::extractEmailsFromText((string)$recipientsRaw);
+        }
+
+        if (empty($candidates)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'No valid recipient email addresses provided.',
+                'results' => []
+            ]);
+            return;
+        }
+
+        $safeHtml = TemplateController::sanitizeTemplateHtml($rawHtml);
+        $plainText = trim(strip_tags($safeHtml));
+        $results = [];
+        $sentCount = 0;
+
+        foreach ($candidates as $cand) {
+            $renderedHtml = MailerService::renderMergeTags($safeHtml, $cand);
+            $renderedPlain = MailerService::renderMergeTags($plainText, $cand);
+            $renderedSubject = MailerService::renderMergeTags($subject, $cand);
+
+            $res = MailerService::send(
+                $cand['email'],
+                $cand['name'],
+                $renderedSubject,
+                $renderedHtml,
+                $renderedPlain,
+                $senderEmail,
+                $senderName,
+                $smtpOverride
+            );
+
+            if ($res['success']) {
+                $sentCount++;
+            }
+
+            $results[] = [
+                'email' => $cand['email'],
+                'name' => $cand['name'],
+                'company' => $cand['company'],
+                'status' => $res['success'] ? 'delivered' : 'failed',
+                'provider_message_id' => $res['provider_message_id'],
+                'message' => $res['message'],
+                'transport' => $res['transport'] ?? 'smtp'
+            ];
+        }
+
+        echo json_encode([
+            'success' => $sentCount > 0,
+            'sent_count' => $sentCount,
+            'total_count' => count($candidates),
+            'results' => $results
+        ]);
     }
 
     public function logs(Request $request): void
@@ -232,7 +312,11 @@ class CampaignController
         $action = (string)$request->input('action', 'pause');
         $db = Database::pdo();
 
-        if ($id > 0 && in_array($action, ['paused', 'cancelled', 'queued'], true)) {
+        if ($id > 0 && $action === 'delete') {
+            $db->prepare("DELETE FROM campaigns WHERE id = ?")->execute([$id]);
+            Logger::audit("campaign_deleted", 'Campaign', $id);
+            Session::setFlash('success', "Campaign #{$id} deleted.");
+        } elseif ($id > 0 && in_array($action, ['paused', 'cancelled', 'queued'], true)) {
             $db->prepare("UPDATE campaigns SET status = ? WHERE id = ?")->execute([$action, $id]);
             Logger::audit("campaign_{$action}", 'Campaign', $id);
             Session::setFlash('success', "Campaign #{$id} status updated to " . strtoupper($action) . ".");

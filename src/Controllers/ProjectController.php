@@ -55,9 +55,9 @@ class ProjectController
         $title = trim((string)$request->input('title', ''));
         $serviceId = (int)$request->input('service_id', 0) ?: null;
         $clientId = (int)$request->input('client_contact_id', 0) ?: null;
-        $status = trim((string)$request->input('status', 'planning'));
+        $status = trim((string)$request->input('status', 'in_progress'));
         $priority = trim((string)$request->input('priority', 'medium'));
-        $budget = $request->input('budget_bdt') !== '' ? (float)$request->input('budget_bdt') : null;
+        $budget = $request->input('budget_bdt') !== '' && $request->input('budget_bdt') !== null ? (float)$request->input('budget_bdt') : null;
         $dueDate = trim((string)$request->input('due_date', '')) ?: null;
         $desc = trim((string)$request->input('description', ''));
 
@@ -76,6 +76,48 @@ class ProjectController
 
         Logger::audit('project_created', 'Project', $pid, null, ['title' => $title]);
         Session::setFlash('success', "Project '{$title}' created.");
+        Response::redirect('/projects');
+    }
+
+    public function updateProject(Request $request): void
+    {
+        $db = Database::pdo();
+        $id = (int)$request->input('id', 0);
+        $title = trim((string)$request->input('title', ''));
+        $serviceId = (int)$request->input('service_id', 0) ?: null;
+        $status = trim((string)$request->input('status', 'in_progress'));
+        $priority = trim((string)$request->input('priority', 'medium'));
+        $budget = $request->input('budget_bdt') !== '' && $request->input('budget_bdt') !== null ? (float)$request->input('budget_bdt') : null;
+        $dueDate = trim((string)$request->input('due_date', '')) ?: null;
+        $desc = trim((string)$request->input('description', ''));
+
+        if ($id <= 0 || $title === '') {
+            Session::setFlash('error', 'Valid project ID and title are required.');
+            Response::redirect('/projects');
+            return;
+        }
+
+        $stmt = $db->prepare("
+            UPDATE projects
+            SET title = ?, description = ?, service_id = ?, status = ?, priority = ?, budget_bdt = ?, due_date = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([$title, $desc, $serviceId, $status, $priority, $budget, $dueDate, $id]);
+
+        Logger::audit('project_updated', 'Project', $id, null, ['title' => $title]);
+        Session::setFlash('success', "Project '{$title}' updated.");
+        Response::redirect('/projects');
+    }
+
+    public function deleteProject(Request $request): void
+    {
+        $db = Database::pdo();
+        $id = (int)$request->input('id', 0);
+        if ($id > 0) {
+            $db->prepare("DELETE FROM projects WHERE id = ?")->execute([$id]);
+            Logger::audit('project_deleted', 'Project', $id);
+            Session::setFlash('success', 'Project removed.');
+        }
         Response::redirect('/projects');
     }
 

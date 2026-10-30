@@ -20,12 +20,16 @@ class EmailQueueWorker
     {
         Config::load(__DIR__ . '/../..');
         $this->db = Database::pdo();
-        $this->batchSize = (int)Config::get('QUEUE_MAX_BATCH_SIZE', 50);
+        $this->batchSize = (int)Config::get('QUEUE_MAX_BATCH_SIZE', 100);
     }
 
-    public function processBatch(): array
+    public function processBatch(?int $onlyCampaignId = null): array
     {
         $summary = ['processed' => 0, 'sent' => 0, 'failed' => 0, 'suppressed' => 0];
+
+        $campaignFilterSql = $onlyCampaignId !== null && $onlyCampaignId > 0
+            ? " AND q.campaign_id = :camp_id "
+            : "";
 
         $stmt = $this->db->prepare("
             SELECT q.*, c.sender_name, c.sender_email, c.status as campaign_status,
@@ -36,10 +40,14 @@ class EmailQueueWorker
             WHERE q.status IN ('queued', 'retry')
               AND (q.next_retry_at IS NULL OR q.next_retry_at <= NOW())
               AND q.attempts < q.max_attempts
-              AND c.status IN ('queued', 'processing')
+              AND c.status IN ('queued', 'processing', 'scheduled')
+              {$campaignFilterSql}
             ORDER BY q.id ASC
             LIMIT :limit
         ");
+        if ($onlyCampaignId !== null && $onlyCampaignId > 0) {
+            $stmt->bindValue(':camp_id', $onlyCampaignId, PDO::PARAM_INT);
+        }
         $stmt->bindValue(':limit', $this->batchSize, PDO::PARAM_INT);
         $stmt->execute();
         $jobs = $stmt->fetchAll();
@@ -55,7 +63,7 @@ class EmailQueueWorker
             $recipientId = (int)$job['recipient_id'];
             $email = strtolower(trim($job['to_email']));
 
-            $this->db->prepare("UPDATE campaigns SET status = 'processing', started_at = COALESCE(started_at, NOW()) WHERE id = ? AND status = 'queued'")
+            $this->db->prepare("UPDATE campaigns SET status = 'processing', started_at = COALESCE(started_at, NOW()) WHERE id = ? AND status IN ('queued', 'scheduled')")
                      ->execute([$campaignId]);
 
             if ($this->isSuppressed($email)) {
@@ -94,17 +102,18 @@ class EmailQueueWorker
                     WHERE id = ?
                 ")->execute([$res['provider_message_id'], $jobId]);
 
-                $this->db->prepare("UPDATE campaign_recipients SET status = 'sent' WHERE id = ?")->execute([$recipientId]);
+                $this->db->prepare("UPDATE campaign_recipients SET status = 'delivered' WHERE id = ?")->execute([$recipientId]);
 
                 $this->db->prepare("
                     INSERT INTO email_logs (campaign_id, recipient_email, subject, provider, provider_message_id, status, response_code, response_message, sent_at)
-                    VALUES (?, ?, ?, 'smtp', ?, 'sent', ?, ?, NOW())
+                    VALUES (?, ?, ?, 'smtp', ?, 'delivered', ?, ?, NOW())
                 ")->execute([$campaignId, $email, $renderedSubject, $res['provider_message_id'], $res['code'], $res['message']]);
 
                 $this->db->prepare("
                     UPDATE campaigns
                     SET queued_count = GREATEST(0, queued_count - 1),
-                        sent_count = sent_count + 1
+                        sent_count = sent_count + 1,
+                        delivered_count = delivered_count + 1
                     WHERE id = ?
                 ")->execute([$campaignId]);
 
