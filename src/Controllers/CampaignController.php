@@ -18,13 +18,15 @@ class CampaignController
     public function showSend(Request $request): void
     {
         $db = Database::pdo();
-        $templates = $db->query("SELECT id, name, category, subject, sender_name, sender_email, body_html FROM email_templates WHERE is_archived = 0 ORDER BY name ASC")->fetchAll();
+        $templates = $db->query("SELECT id, name, category, subject, sender_name, sender_email, body_html FROM email_templates WHERE is_archived = 0 ORDER BY id ASC")->fetchAll();
         $lists = $db->query("SELECT * FROM contact_lists ORDER BY name ASC")->fetchAll();
         $activeContactsCount = (int)$db->query("SELECT COUNT(*) FROM contacts WHERE is_subscribed = 1")->fetchColumn();
+        $selectedTemplateId = (int)$request->input('template_id', 0);
 
         View::render('campaigns/send', [
-            'title' => 'Dispatch Bulk Email Campaign — Dream Career IT',
+            'title' => 'Bulk Email Auto-Sender — Dream Career IT',
             'templates' => $templates,
+            'selectedTemplateId' => $selectedTemplateId,
             'lists' => $lists,
             'activeContactsCount' => $activeContactsCount,
             'flash_success' => Session::getFlash('success'),
@@ -36,18 +38,46 @@ class CampaignController
     public function enqueueCampaign(Request $request): void
     {
         $db = Database::pdo();
+        $templateId = (int)$request->input('template_id', 0) ?: null;
         $name = trim((string)$request->input('name', ''));
         $subject = trim((string)$request->input('subject', ''));
         $senderName = trim((string)$request->input('sender_name', 'Dream Career IT Bangladesh'));
         $senderEmail = trim((string)$request->input('sender_email', 'info@dreamcareerit.com'));
-        $templateId = (int)$request->input('template_id', 0) ?: null;
         $rawHtml = (string)$request->input('body_html', '');
         $pastedRecipients = (string)$request->input('pasted_recipients', '');
         $includeAllSubscribed = (int)$request->input('include_crm_subscribed', 0) === 1;
         $scheduledFor = trim((string)$request->input('scheduled_for', '')) ?: null;
 
-        if ($name === '' || $subject === '' || trim($rawHtml) === '') {
-            Session::setFlash('error', 'Campaign Name, Subject, and HTML Content are required.');
+        // If a template is selected, automatically load its Subject, HTML Body, and Sender details if not overridden
+        if ($templateId !== null && $templateId > 0) {
+            $tplStmt = $db->prepare("SELECT * FROM email_templates WHERE id = ?");
+            $tplStmt->execute([$templateId]);
+            $tpl = $tplStmt->fetch();
+            if ($tpl) {
+                if ($name === '') {
+                    $name = $tpl['name'] . ' — Bulk Auto-Send (' . date('M d, H:i') . ')';
+                }
+                if ($subject === '') {
+                    $subject = (string)$tpl['subject'];
+                }
+                if (trim($rawHtml) === '') {
+                    $rawHtml = (string)$tpl['body_html'];
+                }
+                if ($senderName === '' && !empty($tpl['sender_name'])) {
+                    $senderName = (string)$tpl['sender_name'];
+                }
+                if ($senderEmail === '' && !empty($tpl['sender_email'])) {
+                    $senderEmail = (string)$tpl['sender_email'];
+                }
+            }
+        }
+
+        if ($name === '') {
+            $name = 'Bulk Auto-Send Campaign — ' . date('M d, H:i');
+        }
+
+        if ($subject === '' || trim($rawHtml) === '') {
+            Session::setFlash('error', 'Please select a template or provide an Email Subject and HTML Body.');
             Response::redirect('/campaigns/send');
             return;
         }
@@ -80,7 +110,7 @@ class CampaignController
         }
 
         if (empty($rawCandidates)) {
-            Session::setFlash('error', 'No valid email addresses were found. Please enter one or more valid email IDs.');
+            Session::setFlash('error', 'No valid email addresses were found. Please paste recipient email IDs, upload a CSV, or select CRM contacts.');
             Response::redirect('/campaigns/send');
             return;
         }
@@ -147,19 +177,34 @@ class CampaignController
 
             $db->commit();
 
-            // Immediately dispatch emails if not scheduled for a future time
+            // Auto-Sender: Immediately process and send all emails in this campaign
             $sentNow = 0;
             if (!$scheduledFor && $totalValid > 0) {
                 $worker = new EmailQueueWorker();
-                $batchRes = $worker->processBatch($campaignId);
-                $sentNow = (int)($batchRes['sent'] ?? 0);
+                do {
+                    $batchRes = $worker->processBatch($campaignId);
+                    $sentNow += (int)($batchRes['sent'] ?? 0);
+                } while (($batchRes['processed'] ?? 0) > 0);
             }
 
-            Logger::audit('campaign_dispatched', 'Campaign', $campaignId, null, [
+            Logger::audit('bulk_auto_send_completed', 'Campaign', $campaignId, null, [
                 'valid_queued' => $totalValid,
-                'sent_immediately' => $sentNow,
+                'auto_sent_now' => $sentNow,
                 'suppressed_skipped' => $totalSuppressed
             ]);
+
+            if ($request->isAjax()) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode([
+                    'success' => true,
+                    'campaign_id' => $campaignId,
+                    'campaign_name' => $name,
+                    'sent_count' => $sentNow,
+                    'total_valid' => $totalValid,
+                    'suppressed_count' => $totalSuppressed
+                ]);
+                return;
+            }
 
             $recipientListPreview = implode(', ', array_slice(array_keys($uniqueValid), 0, 5));
             if (count($uniqueValid) > 5) {
@@ -168,13 +213,18 @@ class CampaignController
 
             Session::setFlash(
                 'success',
-                "Campaign '{$name}' submitted & dispatched! Sent immediately to {$sentNow}/{$totalValid} recipient(s) ({$recipientListPreview})."
+                "Auto-Sender Completed! Campaign '{$name}' automatically sent to {$sentNow}/{$totalValid} recipient(s) ({$recipientListPreview})."
             );
         } catch (\Throwable $e) {
             if ($db->inTransaction()) {
                 $db->rollBack();
             }
-            Session::setFlash('error', 'Failed to dispatch campaign: ' . $e->getMessage());
+            if ($request->isAjax()) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                return;
+            }
+            Session::setFlash('error', 'Auto-Sender failed: ' . $e->getMessage());
             Response::redirect('/campaigns/send');
             return;
         }
@@ -183,16 +233,34 @@ class CampaignController
     }
 
     /**
-     * Direct JSON API endpoint for sending emails from SPA or AJAX calls
+     * Direct JSON API endpoint for the Bulk Auto-Sender Engine
      */
     public function apiSendEmail(Request $request): void
     {
         header('Content-Type: application/json; charset=utf-8');
-        $subject = trim((string)$request->input('subject', 'Message from Dream Career IT'));
+        $templateId = (int)$request->input('template_id', 0);
+        $subject = trim((string)$request->input('subject', ''));
         $rawHtml = (string)$request->input('body_html', '');
         $senderName = trim((string)$request->input('sender_name', 'Dream Career IT Bangladesh'));
         $senderEmail = trim((string)$request->input('sender_email', 'info@dreamcareerit.com'));
         $recipientsRaw = $request->input('recipients', '');
+
+        if ($templateId > 0 && ($subject === '' || trim($rawHtml) === '')) {
+            try {
+                $db = Database::pdo();
+                $stmt = $db->prepare("SELECT * FROM email_templates WHERE id = ?");
+                $stmt->execute([$templateId]);
+                $tpl = $stmt->fetch();
+                if ($tpl) {
+                    if ($subject === '') $subject = (string)$tpl['subject'];
+                    if (trim($rawHtml) === '') $rawHtml = (string)$tpl['body_html'];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if ($subject === '') {
+            $subject = 'Important Update from Dream Career IT Bangladesh';
+        }
 
         $smtpOverride = [
             'smtp_host' => $request->input('smtp_host'),
@@ -260,7 +328,7 @@ class CampaignController
                 'status' => $res['success'] ? 'delivered' : 'failed',
                 'provider_message_id' => $res['provider_message_id'],
                 'message' => $res['message'],
-                'transport' => $res['transport'] ?? 'smtp'
+                'transport' => $res['transport'] ?? 'auto_smtp'
             ];
         }
 
@@ -301,7 +369,7 @@ class CampaignController
         $res = $worker->processBatch();
         Session::setFlash(
             'success',
-            "Worker Batch Executed: Processed {$res['processed']} | Sent: {$res['sent']} | Failed: {$res['failed']} | Suppressed: {$res['suppressed']}"
+            "Auto-Sender Batch Executed: Processed {$res['processed']} | Sent: {$res['sent']} | Failed: {$res['failed']} | Suppressed: {$res['suppressed']}"
         );
         Response::redirect('/campaigns/logs?tab=queue');
     }

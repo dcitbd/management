@@ -2,12 +2,14 @@
     <div class="page-title-row">
         <div>
             <h1 class="page-title">Email Templates Library & Studio</h1>
-            <p class="page-subtitle">Add, edit, duplicate, preview, or delete responsive HTML email templates with merge tags ({{name}}, {{email}}, {{company}})</p>
+            <p class="page-subtitle">Select any template to launch the Bulk Auto-Sender, or Add, Edit, Duplicate, and Delete templates</p>
         </div>
         <div class="action-buttons">
+            <a href="/campaigns/send" class="btn btn-secondary">
+                <i class="bi bi-rocket-takeoff-fill text-cyan"></i> Open Bulk Auto-Sender
+            </a>
             <a href="/templates/create" class="btn btn-primary">
-                <i class="bi bi-plus-lg"></i>
-                <span>Create New Template</span>
+                <i class="bi bi-plus-lg"></i> Create New Template
             </a>
         </div>
     </div>
@@ -57,9 +59,9 @@
                         </div>
                     </div>
                     <div class="card-3d-meta">
-                        <span style="font-size:11.5px;" class="text-muted">
-                            Updated <?= date('M d, Y', strtotime($tpl['updated_at'])) ?>
-                        </span>
+                        <a href="/campaigns/send?template_id=<?= (int)$tpl['id'] ?>" class="btn btn-sm btn-primary" title="Select & Auto-Send Bulk Mail">
+                            <i class="bi bi-rocket-takeoff-fill"></i> Select & Auto-Send
+                        </a>
                         <div class="card-3d-actions">
                             <a href="/templates/edit/<?= (int)$tpl['id'] ?>" class="btn btn-sm btn-secondary" title="Edit Template">
                                 <i class="bi bi-pencil-square"></i> Edit

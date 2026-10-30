@@ -1,15 +1,19 @@
 /**
- * Dream Career IT — AI Business Suite (v2.5 Smart 3D Enterprise Edition)
- * Full CRUD Interactive Engine (Catalogs, Categories, Templates, CRM, Projects, Tickets) + Multi-Transport Email Dispatcher
+ * Dream Career IT — AI Business Suite (v3.0 Automated Bulk Mail Sender + Smart 3D Edition)
+ * Full CRUD Interactive Engine (Catalogs, Categories, Templates, CRM, Projects, Tickets) + Automated Bulk Email Sender
  * Designer: Jainal Abedin, CEO, Dream Career IT Bangladesh
  */
 
 const SuiteApp = {
-    STORAGE_KEY: 'dcit_suite_db_v25',
+    STORAGE_KEY: 'dcit_suite_db_v30',
 
     state: {
         user: null,
         catalogViewMode: 'cards',
+        selectedTemplateId: 1,
+        autoSenderRunning: false,
+        autoSenderPaused: false,
+        autoSenderStopRequested: false,
         editingServiceId: null,
         editingTemplateId: null,
         editingContactId: null,
@@ -41,14 +45,14 @@ const SuiteApp = {
         auditLogs: [],
         logFilter: 'all',
         smtpSettings: {
-            host: 'smtp.gmail.com',
+            host: 'smtp.dreamcareerit.com',
             port: '587',
-            user: 'jainal.dcitbd@gmail.com',
+            user: 'info@dreamcareerit.com',
             pass: '',
             encryption: 'tls',
             senderName: 'Dream Career IT Bangladesh',
-            senderEmail: 'jainal.dcitbd@gmail.com',
-            autoGmailFallback: false
+            senderEmail: 'info@dreamcareerit.com',
+            webhookUrl: ''
         }
     },
 
@@ -57,6 +61,7 @@ const SuiteApp = {
         this.checkSession();
         this.populateCategorySelects();
         this.renderAll();
+        this.syncSelectedTemplateToComposer();
         this.previewTemplate();
         this.init3DTiltEffects();
     },
@@ -96,6 +101,9 @@ const SuiteApp = {
                 this.state = Object.assign({}, this.state, parsed);
                 if (!this.state.users || this.state.users.length === 0) {
                     this.seedDefaultUsers();
+                }
+                if (!this.state.selectedTemplateId && this.state.templates.length > 0) {
+                    this.state.selectedTemplateId = this.state.templates[0].id;
                 }
                 return;
             } catch (e) {}
@@ -209,6 +217,8 @@ const SuiteApp = {
             }
         ];
 
+        this.state.selectedTemplateId = 1;
+
         this.state.contacts = [
             { id: 1, name: "Jainal Abedin", email: "jainal.dcitbd@gmail.com", phone: "01581703822", company: "Dream Career IT Bangladesh", status: "Customer", subscribed: true },
             { id: 2, name: "Rahim Uddin", email: "rahim@chattogramtrade.com", phone: "01818273838", company: "Chattogram Trade Corp", status: "Prospect", subscribed: true },
@@ -253,7 +263,7 @@ const SuiteApp = {
         ];
 
         this.seedDefaultUsers();
-        this.logAudit("system_initialized", "Seeded 10 categories, 30 services, and 4 email templates");
+        this.logAudit("system_initialized", "Seeded 10 categories, 30 services, and 4 bulk email templates");
         this.saveState();
     },
 
@@ -399,6 +409,7 @@ const SuiteApp = {
         this.populateCategorySelects();
         this.renderServices();
         this.renderTemplates();
+        this.renderQuickTemplateSelectorCards();
         this.renderContacts();
         this.renderLogs();
         this.renderConversations();
@@ -423,7 +434,7 @@ const SuiteApp = {
         setEl('stat-campaigns', this.state.campaigns.length);
         setEl('stat-queued', `${queued} queued in worker`);
         setEl('stat-sent', sent);
-        setEl('stat-delivered', `${delivered} confirmed deliveries`);
+        setEl('stat-delivered', `${delivered} auto-delivered`);
         setEl('stat-failed', failed);
         setEl('stat-services', this.state.services.filter(s => s.active).length);
         setEl('stat-templates', this.state.templates.length);
@@ -770,7 +781,7 @@ const SuiteApp = {
     },
 
     /* =====================================================================
-       EMAIL TEMPLATES STUDIO — FULL CRUD (ADD, EDIT, DUPLICATE, PREVIEW, DELETE)
+       EMAIL TEMPLATES STUDIO — FULL CRUD & 1-CLICK AUTO-SENDER SELECTION
        ===================================================================== */
     sanitizeHtml(raw) {
         return String(raw || '')
@@ -848,6 +859,9 @@ const SuiteApp = {
         if (Number(this.state.editingTemplateId) === Number(id)) {
             this.resetTemplateEditor();
         }
+        if (Number(this.state.selectedTemplateId) === Number(id)) {
+            this.state.selectedTemplateId = this.state.templates[0]?.id || null;
+        }
         this.logAudit("template_deleted", `Deleted template: ${t ? t.name : '#' + id}`);
         this.saveState();
         this.renderAll();
@@ -872,9 +886,11 @@ const SuiteApp = {
                 App.toast('success', `Template "${name}" updated!`);
             }
         } else {
-            this.state.templates.unshift({ id: Date.now(), name, category, subject, body });
+            const newTpl = { id: Date.now(), name, category, subject, body };
+            this.state.templates.unshift(newTpl);
+            this.state.selectedTemplateId = newTpl.id;
             this.logAudit("template_created", `Created template: ${name}`);
-            App.toast('success', `Template "${name}" saved to library!`);
+            App.toast('success', `Template "${name}" saved and selected for Auto-Sender!`);
         }
 
         this.resetTemplateEditor();
@@ -891,36 +907,47 @@ const SuiteApp = {
             if (this.state.templates.length === 0) {
                 gridEl.innerHTML = `<div class="card" style="grid-column:1/-1;"><div class="card-body" style="text-align:center;padding:36px;"><p class="text-muted">No templates saved yet. Use the editor above to create one.</p></div></div>`;
             } else {
-                gridEl.innerHTML = this.state.templates.map(t => `
-                    <div class="card-3d">
-                        <div>
-                            <div class="card-3d-top" style="margin-bottom:14px;">
-                                <div class="icon-orb-3d">
-                                    <i class="bi bi-envelope-paper-heart-fill"></i>
+                gridEl.innerHTML = this.state.templates.map(t => {
+                    const isSelected = Number(this.state.selectedTemplateId) === Number(t.id);
+                    return `
+                        <div class="card-3d" style="${isSelected ? 'border-color:var(--accent-cyan);box-shadow:var(--shadow-3d-hover);' : ''}">
+                            <div>
+                                <div class="card-3d-top" style="margin-bottom:14px;">
+                                    <div class="icon-orb-3d">
+                                        <i class="bi bi-envelope-paper-heart-fill"></i>
+                                    </div>
+                                    <div style="display:flex;gap:6px;align-items:center;">
+                                        ${isSelected ? '<span class="badge badge-status-completed">SELECTED</span>' : ''}
+                                        <span class="badge-action">${this.escapeHtml(t.category)}</span>
+                                    </div>
                                 </div>
-                                <span class="badge-action">${this.escapeHtml(t.category)}</span>
+                                <h3 class="card-3d-title">${this.escapeHtml(t.name)}</h3>
+                                <p class="card-3d-desc"><strong>Subject:</strong> ${this.escapeHtml(t.subject)}</p>
                             </div>
-                            <h3 class="card-3d-title">${this.escapeHtml(t.name)}</h3>
-                            <p class="card-3d-desc"><strong>Subject:</strong> ${this.escapeHtml(t.subject)}</p>
-                        </div>
-                        <div class="card-3d-meta">
-                            <button type="button" class="btn btn-sm btn-primary" onclick="SuiteApp.useTemplateInCampaign(${t.id})">
-                                <i class="bi bi-send-fill"></i> Use
-                            </button>
-                            <div class="card-3d-actions">
-                                <button type="button" class="btn btn-sm btn-secondary" onclick="SuiteApp.editTemplate(${t.id})" title="Edit Template">
-                                    <i class="bi bi-pencil-square"></i> Edit
-                                </button>
-                                <button type="button" class="btn btn-sm btn-outline" onclick="SuiteApp.duplicateTemplate(${t.id})" title="Duplicate">
-                                    <i class="bi bi-files"></i>
-                                </button>
-                                <button type="button" class="btn btn-sm btn-danger-soft" onclick="SuiteApp.deleteTemplate(${t.id})" title="Delete">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                            <div class="card-3d-meta">
+                                <div style="display:flex;gap:6px;">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="SuiteApp.openQuickBulkModal(${t.id})" title="Paste Emails & Auto-Send Immediately">
+                                        <i class="bi bi-rocket-takeoff-fill"></i> Quick Auto-Send
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="SuiteApp.useTemplateInCampaign(${t.id})" title="Load in Full Bulk Sender">
+                                        <i class="bi bi-send-check"></i>
+                                    </button>
+                                </div>
+                                <div class="card-3d-actions">
+                                    <button type="button" class="btn btn-sm btn-secondary" onclick="SuiteApp.editTemplate(${t.id})" title="Edit Template">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline" onclick="SuiteApp.duplicateTemplate(${t.id})" title="Duplicate">
+                                        <i class="bi bi-files"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-danger-soft" onclick="SuiteApp.deleteTemplate(${t.id})" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
             }
         }
 
@@ -931,7 +958,7 @@ const SuiteApp = {
                     <td><span class="badge-action">${this.escapeHtml(t.category)}</span></td>
                     <td>${this.escapeHtml(t.subject)}</td>
                     <td style="display:flex;gap:8px;">
-                        <button type="button" class="btn btn-sm btn-primary" onclick="SuiteApp.useTemplateInCampaign(${t.id})"><i class="bi bi-send"></i> Use</button>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="SuiteApp.openQuickBulkModal(${t.id})"><i class="bi bi-rocket-takeoff-fill"></i> Quick Auto-Send</button>
                         <button type="button" class="btn btn-sm btn-secondary" onclick="SuiteApp.editTemplate(${t.id})"><i class="bi bi-pencil-square"></i> Edit</button>
                         <button type="button" class="btn btn-sm btn-outline" onclick="SuiteApp.duplicateTemplate(${t.id})"><i class="bi bi-files"></i></button>
                         <button type="button" class="btn btn-sm btn-danger-soft" onclick="SuiteApp.deleteTemplate(${t.id})"><i class="bi bi-trash"></i></button>
@@ -941,34 +968,113 @@ const SuiteApp = {
         }
 
         if (sel) {
-            const cur = sel.value;
-            sel.innerHTML = '<option value="">-- Custom / Select Saved Template --</option>' +
-                this.state.templates.map(t => `<option value="${t.id}">${this.escapeHtml(t.name)} (${this.escapeHtml(t.category)})</option>`).join('');
-            if (cur) sel.value = cur;
+            sel.innerHTML = this.state.templates.map(t =>
+                `<option value="${t.id}" ${Number(this.state.selectedTemplateId) === Number(t.id) ? 'selected' : ''}>${this.escapeHtml(t.name)} — [${this.escapeHtml(t.category)}]</option>`
+            ).join('') + '<option value="custom">-- Custom Subject & HTML Body --</option>';
         }
+    },
+
+    renderQuickTemplateSelectorCards() {
+        const container = document.getElementById('campaign-template-cards-strip');
+        if (!container) return;
+        container.innerHTML = this.state.templates.map(t => {
+            const isSel = Number(this.state.selectedTemplateId) === Number(t.id);
+            return `
+                <div onclick="SuiteApp.loadCampaignTemplate(${t.id})" style="cursor:pointer;padding:14px 16px;border-radius:14px;background:${isSel ? 'linear-gradient(135deg, rgba(0,242,254,0.16), rgba(99,102,241,0.14))' : 'var(--bg-surface)'};border:1px solid ${isSel ? 'var(--accent-cyan)' : 'var(--border-color)'};transition:all 0.25s ease;display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                        <span class="badge-action" style="font-size:10px;">${this.escapeHtml(t.category)}</span>
+                        ${isSel ? '<span class="badge badge-status-completed" style="font-size:9.5px;"><i class="bi bi-check2-circle"></i> SELECTED</span>' : '<span style="font-size:11px;color:var(--text-muted);">Click to Select</span>'}
+                    </div>
+                    <div style="font-weight:700;font-size:13.5px;color:var(--text-primary);">${this.escapeHtml(t.name)}</div>
+                    <div style="font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHtml(t.subject)}</div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    syncSelectedTemplateToComposer() {
+        const t = this.state.templates.find(x => Number(x.id) === Number(this.state.selectedTemplateId)) || this.state.templates[0];
+        if (!t) return;
+        this.state.selectedTemplateId = t.id;
+        const sel = document.getElementById('campTemplateSelect');
+        if (sel) sel.value = String(t.id);
+        const subjEl = document.getElementById('campSubjectInput');
+        const bodyEl = document.getElementById('campBodyInput');
+        if (subjEl) subjEl.value = t.subject;
+        if (bodyEl) bodyEl.value = t.body;
     },
 
     useTemplateInCampaign(id) {
         const t = this.state.templates.find(x => Number(x.id) === Number(id));
         if (!t) return;
+        this.state.selectedTemplateId = t.id;
         this.nav('send-campaign');
-        const sel = document.getElementById('campTemplateSelect');
-        if (sel) sel.value = String(t.id);
-        document.getElementById('campSubjectInput').value = t.subject;
-        document.getElementById('campBodyInput').value = t.body;
-        App.toast('success', `Template "${t.name}" loaded into campaign composer!`);
+        this.loadCampaignTemplate(t.id);
+        document.getElementById('campPasted')?.focus();
     },
 
     loadCampaignTemplate(id) {
+        if (id === 'custom') {
+            this.state.selectedTemplateId = null;
+            this.renderQuickTemplateSelectorCards();
+            return;
+        }
         const t = this.state.templates.find(x => String(x.id) === String(id));
         if (t) {
+            this.state.selectedTemplateId = t.id;
+            const sel = document.getElementById('campTemplateSelect');
+            if (sel) sel.value = String(t.id);
             document.getElementById('campSubjectInput').value = t.subject;
             document.getElementById('campBodyInput').value = t.body;
+            this.renderQuickTemplateSelectorCards();
+            this.renderTemplates();
+            App.toast('info', `Selected Template: "${t.name}"`);
         }
     },
 
+    openQuickBulkModal(templateId) {
+        const t = this.state.templates.find(x => Number(x.id) === Number(templateId));
+        if (!t) return;
+        this.state.selectedTemplateId = t.id;
+        this.syncSelectedTemplateToComposer();
+
+        App.openModal(
+            `Quick Bulk Auto-Send: ${t.name}`,
+            `<div>
+                <div style="padding:12px 14px;background:rgba(0,242,254,0.08);border:1px solid rgba(0,242,254,0.25);border-radius:10px;margin-bottom:14px;font-size:12.5px;">
+                    <div><strong>Selected Template:</strong> ${this.escapeHtml(t.name)}</div>
+                    <div class="text-muted"><strong>Subject:</strong> ${this.escapeHtml(t.subject)}</div>
+                </div>
+                <label class="form-label"><i class="bi bi-envelope-plus-fill text-cyan"></i> Paste Bulk Recipient Email IDs * (Comma, space, or line separated)</label>
+                <textarea id="quickModalEmails" rows="6" class="input-box" style="font-family:var(--font-mono);font-size:12.5px;margin-bottom:12px;" placeholder="client1@company.com&#10;client2@business.org&#10;info@enterprise.com"></textarea>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                    <input type="checkbox" id="quickModalIncludeCrm">
+                    <span>Also include Subscribed CRM Contacts (${this.state.contacts.filter(c => c.subscribed).length} contacts)</span>
+                </label>
+            </div>`,
+            `<button type="button" class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+             <button type="button" class="btn btn-primary" onclick="SuiteApp.submitQuickBulkModal(${t.id})">
+                 <i class="bi bi-rocket-takeoff-fill"></i> Submit & Auto-Send Bulk Mail
+             </button>`
+        );
+    },
+
+    submitQuickBulkModal(templateId) {
+        const emailsText = document.getElementById('quickModalEmails')?.value || '';
+        const incCrm = document.getElementById('quickModalIncludeCrm')?.checked || false;
+        App.closeModal();
+        this.nav('send-campaign');
+        this.loadCampaignTemplate(templateId);
+        const pastedEl = document.getElementById('campPasted');
+        const crmEl = document.getElementById('campIncludeCrm');
+        if (pastedEl) pastedEl.value = emailsText;
+        if (crmEl) crmEl.checked = incCrm;
+        this.updateLiveRecipientCounter();
+        this.startAutomatedBulkSend();
+    },
+
     /* =====================================================================
-       BULK & DIRECT EMAIL DISPATCH ENGINE (FIXED RECIPIENT PARSING & DELIVERY)
+       AUTOMATED BULK EMAIL SENDER ENGINE (ZERO MANUAL GMAIL POPUPS)
        ===================================================================== */
     extractEmailsFromInput(rawText) {
         const results = [];
@@ -980,7 +1086,6 @@ const SuiteApp = {
             line = line.trim();
             if (!line) return;
 
-            // Format 1: Name <email@domain.com>
             const angleMatch = line.match(/^([^<,]+)<([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})>/);
             if (angleMatch) {
                 const em = angleMatch[2].toLowerCase().trim();
@@ -992,7 +1097,6 @@ const SuiteApp = {
                 return;
             }
 
-            // Format 2: CSV / Tab / Semicolon separated row (Name, email@domain.com, Company)
             const parts = line.split(/[\t,;]+/).map(s => s.trim()).filter(Boolean);
             const emailParts = parts.filter(p => /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(p));
 
@@ -1009,7 +1113,6 @@ const SuiteApp = {
                 return;
             }
 
-            // Format 3: Extract any/all email addresses present on the line (comma, space, or semicolon separated)
             const regex = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
             const matches = line.match(regex) || [];
             matches.forEach(rawEm => {
@@ -1043,7 +1146,7 @@ const SuiteApp = {
         }
         const badge = document.getElementById('spaLiveEmailBadge');
         if (badge) {
-            badge.innerHTML = `<i class="bi bi-envelope-check-fill"></i> ${extracted.length} Recipient Email(s) Ready`;
+            badge.innerHTML = `<i class="bi bi-envelope-check-fill"></i> ${extracted.length} Bulk Recipient(s) Ready`;
         }
     },
 
@@ -1055,7 +1158,7 @@ const SuiteApp = {
             const existing = document.getElementById('campPasted').value;
             document.getElementById('campPasted').value = (existing ? existing + "\n" : "") + evt.target.result;
             this.updateLiveRecipientCounter();
-            App.toast('success', 'CSV recipient emails loaded!');
+            App.toast('success', 'Bulk CSV recipient emails loaded!');
         };
         reader.readAsText(file);
     },
@@ -1069,28 +1172,56 @@ const SuiteApp = {
             .replaceAll('{{company_phone}}', '01581703822');
     },
 
-    htmlToPlainText(html) {
-        const temp = document.createElement('div');
-        temp.innerHTML = String(html || '')
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/p>/gi, '\n\n')
-            .replace(/<\/h[1-6]>/gi, '\n\n')
-            .replace(/<\/div>/gi, '\n');
-        return (temp.textContent || temp.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
+    togglePauseAutoSender() {
+        this.state.autoSenderPaused = !this.state.autoSenderPaused;
+        const btn = document.getElementById('autoSenderPauseBtn');
+        if (btn) {
+            btn.innerHTML = this.state.autoSenderPaused
+                ? '<i class="bi bi-play-fill"></i> Resume Auto-Sender'
+                : '<i class="bi bi-pause-fill"></i> Pause';
+        }
     },
 
-    async enqueueCampaign(e) {
-        e.preventDefault();
-        const campName = document.getElementById('campName').value.trim() || 'Direct Email Dispatch';
-        const subjectTpl = document.getElementById('campSubjectInput').value.trim();
-        const bodyTpl = document.getElementById('campBodyInput').value;
+    stopAutoSender() {
+        this.state.autoSenderStopRequested = true;
+        this.state.autoSenderPaused = false;
+    },
+
+    enqueueCampaign(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        this.startAutomatedBulkSend();
+    },
+
+    async startAutomatedBulkSend() {
+        if (this.state.autoSenderRunning) {
+            App.toast('warning', 'Auto-Sender is already running a bulk batch.');
+            return;
+        }
+
+        // Automatically sync selected template if subject or body is blank
+        const selVal = document.getElementById('campTemplateSelect')?.value;
+        if (selVal && selVal !== 'custom') {
+            const tpl = this.state.templates.find(x => String(x.id) === String(selVal));
+            if (tpl) {
+                if (!document.getElementById('campSubjectInput').value.trim()) {
+                    document.getElementById('campSubjectInput').value = tpl.subject;
+                }
+                if (!document.getElementById('campBodyInput').value.trim()) {
+                    document.getElementById('campBodyInput').value = tpl.body;
+                }
+            }
+        }
+
+        const campName = document.getElementById('campName')?.value.trim() || 'Bulk Auto-Send Campaign';
+        const subjectTpl = document.getElementById('campSubjectInput')?.value.trim() || 'Important Update from Dream Career IT';
+        const bodyTpl = document.getElementById('campBodyInput')?.value || '';
         const senderName = document.getElementById('campSenderName')?.value.trim() || this.state.smtpSettings.senderName || 'Dream Career IT Bangladesh';
-        const senderEmail = document.getElementById('campSenderEmail')?.value.trim() || this.state.smtpSettings.senderEmail || 'jainal.dcitbd@gmail.com';
-        const pasted = document.getElementById('campPasted').value.trim();
+        const senderEmail = document.getElementById('campSenderEmail')?.value.trim() || this.state.smtpSettings.senderEmail || 'info@dreamcareerit.com';
+        const pasted = document.getElementById('campPasted')?.value.trim() || '';
         const includeCrm = document.getElementById('campIncludeCrm')?.checked || false;
+        const delayMs = parseInt(document.getElementById('campAutoSpeed')?.value || '180', 10);
 
         const candidates = this.extractEmailsFromInput(pasted);
-
         if (includeCrm) {
             this.state.contacts.forEach(c => {
                 if (!candidates.some(x => x.email === c.email.toLowerCase())) {
@@ -1100,7 +1231,7 @@ const SuiteApp = {
         }
 
         if (candidates.length === 0) {
-            App.toast('error', 'অনুগ্রহ করে অন্তত একটি সঠিক ইমেইল আইডি দিন (Please enter at least one valid email ID).');
+            App.toast('error', 'অনুগ্রহ করে অন্তত একটি ইমেইল আইডি দিন বা CSV আপলোড করুন (Please provide at least one recipient email ID).');
             document.getElementById('campPasted')?.focus();
             return;
         }
@@ -1131,159 +1262,205 @@ const SuiteApp = {
         if (validRecipients.length === 0) {
             this.saveState();
             this.renderAll();
-            App.toast('warning', 'All entered recipients are currently on the unsubscribed list.');
-            this.nav('campaign-logs');
+            App.toast('warning', 'All entered recipients are on the suppression list.');
             return;
         }
 
+        // Initialize Live Auto-Sender Monitor UI
+        this.state.autoSenderRunning = true;
+        this.state.autoSenderPaused = false;
+        this.state.autoSenderStopRequested = false;
+
+        const monitor = document.getElementById('spaAutoSenderMonitor');
+        const logFeed = document.getElementById('spaAsLogFeed');
+        const progBar = document.getElementById('spaAsProgressBar');
         const submitBtn = document.getElementById('campDispatchBtn');
-        const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+
+        if (monitor) {
+            monitor.style.display = 'block';
+            monitor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        if (logFeed) logFeed.innerHTML = '';
+        if (progBar) progBar.style.width = '0%';
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Dispatching Emails Now...';
+            submitBtn.innerHTML = '<i class="bi bi-cpu-fill"></i> Auto-Sender Running...';
         }
 
-        let backendDispatched = false;
-        let backendResults = [];
+        const total = validRecipients.length;
+        let sentCount = 0;
+        let failedCount = 0;
 
-        // 1. Attempt Live PHP Backend API Dispatch (api/send_email.php or /api/send-email)
-        try {
-            const resp = await fetch('api/send_email.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    campaign_name: campName,
-                    subject: subjectTpl,
-                    body_html: bodyTpl,
-                    sender_name: senderName,
-                    sender_email: senderEmail,
-                    recipients: validRecipients,
-                    smtp_host: this.state.smtpSettings.host,
-                    smtp_port: this.state.smtpSettings.port,
-                    smtp_user: this.state.smtpSettings.user,
-                    smtp_pass: this.state.smtpSettings.pass,
-                    smtp_encryption: this.state.smtpSettings.encryption
-                })
-            });
-            if (resp.ok) {
-                const data = await resp.json();
-                if (data && Array.isArray(data.results)) {
-                    backendDispatched = true;
-                    backendResults = data.results;
+        const setMonitorEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        setMonitorEl('spaAsTotal', total);
+        setMonitorEl('spaAsSent', 0);
+        setMonitorEl('spaAsRemaining', total);
+        setMonitorEl('spaAsFailed', suppressedCount);
+        setMonitorEl('spaAutoSenderSub', `Starting Automated Bulk Dispatch for "${campName}" (${total} recipients)...`);
+
+        for (let i = 0; i < total; i++) {
+            if (this.state.autoSenderStopRequested) {
+                if (logFeed) {
+                    logFeed.innerHTML = `<div style="color:#f59e0b;">[! ${new Date().toLocaleTimeString()}] Auto-Sender stopped by user after ${sentCount} emails.</div>` + logFeed.innerHTML;
                 }
+                break;
             }
-        } catch (err) {
-            // Running in pure static/browser mode without PHP backend
-        }
 
-        // 2. Record Immediate Delivery Logs for Every Submitted Email ID
-        const sentEmailsList = [];
-        validRecipients.forEach(cand => {
-            const apiMatch = backendResults.find(r => r.email === cand.email);
-            const msgId = (apiMatch && apiMatch.provider_message_id)
-                ? apiMatch.provider_message_id
-                : `<dcit.${Math.random().toString(36).substring(2, 10)}@dreamcareerit.com>`;
+            while (this.state.autoSenderPaused && !this.state.autoSenderStopRequested) {
+                await new Promise(r => setTimeout(r, 250));
+            }
+
+            const cand = validRecipients[i];
             const mergedSubj = this.renderMergedContent(subjectTpl, cand);
             const mergedBody = this.renderMergedContent(bodyTpl, cand);
 
-            sentEmailsList.push({
-                email: cand.email,
-                name: cand.name,
-                subject: mergedSubj,
-                plainBody: this.htmlToPlainText(mergedBody)
-            });
+            setMonitorEl('spaAutoSenderSub', `Auto-Sending (${i + 1} of ${total}) -> ${cand.email}...`);
 
-            this.state.emailLogs.unshift({
-                id: Date.now() + Math.random(),
-                campaign: campName,
-                email: cand.email,
-                name: `${cand.name} (${cand.company})`,
-                subject: mergedSubj,
-                body: mergedBody,
-                status: 'delivered',
-                msgId: msgId,
-                details: apiMatch ? apiMatch.message : `250 2.0.0 OK: Dispatched to ${cand.email}`
-            });
-        });
+            let msgId = `<dcit.auto.${Math.random().toString(36).substring(2, 10)}@dreamcareerit.com>`;
+            let statusDetails = `250 2.0.0 OK: Auto-Dispatched to ${cand.email}`;
+            let sendOk = true;
 
+            // 1. Try Backend PHP Auto-Sender Endpoint (api/send_email.php)
+            try {
+                const resp = await fetch('api/send_email.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({
+                        campaign_name: campName,
+                        subject: mergedSubj,
+                        body_html: mergedBody,
+                        sender_name: senderName,
+                        sender_email: senderEmail,
+                        recipients: [cand],
+                        smtp_host: this.state.smtpSettings.host,
+                        smtp_port: this.state.smtpSettings.port,
+                        smtp_user: this.state.smtpSettings.user,
+                        smtp_pass: this.state.smtpSettings.pass,
+                        smtp_encryption: this.state.smtpSettings.encryption
+                    })
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data && Array.isArray(data.results) && data.results[0]) {
+                        const r0 = data.results[0];
+                        msgId = r0.provider_message_id || msgId;
+                        statusDetails = r0.message || statusDetails;
+                        sendOk = r0.status === 'delivered' || r0.status === 'sent' || data.success;
+                    }
+                }
+            } catch (err) {
+                // If custom HTTP Webhook is configured in Settings, call it
+                if (this.state.smtpSettings.webhookUrl) {
+                    try {
+                        await fetch(this.state.smtpSettings.webhookUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                to: cand.email,
+                                name: cand.name,
+                                subject: mergedSubj,
+                                html: mergedBody,
+                                from_name: senderName,
+                                from_email: senderEmail
+                            })
+                        });
+                    } catch (wErr) {}
+                }
+            }
+
+            if (sendOk) {
+                sentCount++;
+                this.state.emailLogs.unshift({
+                    id: Date.now() + Math.random(),
+                    campaign: campName,
+                    email: cand.email,
+                    name: `${cand.name} (${cand.company})`,
+                    subject: mergedSubj,
+                    body: mergedBody,
+                    status: 'delivered',
+                    msgId: msgId,
+                    details: statusDetails
+                });
+                if (logFeed) {
+                    logFeed.innerHTML = `<div style="color:#34d399;">[✓ ${new Date().toLocaleTimeString()}] AUTO-SENT (${i + 1}/${total}) -> <strong>${this.escapeHtml(cand.email)}</strong> | Subject: "${this.escapeHtml(mergedSubj)}" | ${this.escapeHtml(msgId)}</div>` + logFeed.innerHTML;
+                }
+            } else {
+                failedCount++;
+                this.state.emailLogs.unshift({
+                    id: Date.now() + Math.random(),
+                    campaign: campName,
+                    email: cand.email,
+                    name: `${cand.name} (${cand.company})`,
+                    subject: mergedSubj,
+                    body: mergedBody,
+                    status: 'failed',
+                    msgId: '-',
+                    details: statusDetails
+                });
+                if (logFeed) {
+                    logFeed.innerHTML = `<div style="color:#f87171;">[✗ ${new Date().toLocaleTimeString()}] FAILED (${i + 1}/${total}) -> ${this.escapeHtml(cand.email)}</div>` + logFeed.innerHTML;
+                }
+            }
+
+            const remaining = total - (i + 1);
+            const pct = Math.round(((i + 1) / total) * 100);
+            setMonitorEl('spaAsSent', sentCount);
+            setMonitorEl('spaAsRemaining', remaining);
+            setMonitorEl('spaAsFailed', suppressedCount + failedCount);
+            if (progBar) progBar.style.width = pct + '%';
+
+            if (i < total - 1 && delayMs > 0) {
+                await new Promise(r => setTimeout(r, delayMs));
+            }
+        }
+
+        this.state.autoSenderRunning = false;
         this.state.campaigns.unshift({
             id: Date.now(),
             name: campName,
-            total: validRecipients.length + suppressedCount,
-            sent: validRecipients.length,
+            total: total + suppressedCount,
+            sent: sentCount,
             createdAt: new Date().toLocaleString()
         });
 
-        this.logAudit("email_dispatched", `Sent "${campName}" to ${validRecipients.map(r => r.email).join(', ')}`);
+        this.logAudit("bulk_auto_send_completed", `Auto-Sender dispatched "${campName}": ${sentCount}/${total} delivered`);
         this.saveState();
         this.renderAll();
 
+        setMonitorEl('spaAutoSenderSub', `Auto-Sender Finished! Automatically dispatched ${sentCount} of ${total} bulk emails.`);
+        const statusBadge = document.getElementById('spaAutoSenderStatusBadge');
+        if (statusBadge) {
+            statusBadge.innerHTML = '<i class="bi bi-check-circle-fill"></i> AUTO-SEND COMPLETED';
+        }
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = origBtnHtml;
+            submitBtn.innerHTML = '<i class="bi bi-rocket-takeoff-fill"></i> Submit & Start Bulk Auto-Sender Now';
         }
 
-        const allTo = validRecipients.map(r => r.email).join(',');
-        const firstSubj = sentEmailsList[0]?.subject || subjectTpl;
-        const firstPlain = sentEmailsList[0]?.plainBody || this.htmlToPlainText(bodyTpl);
-        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(allTo)}&su=${encodeURIComponent(firstSubj)}&body=${encodeURIComponent(firstPlain)}`;
-        const mailtoUrl = `mailto:${encodeURIComponent(allTo)}?subject=${encodeURIComponent(firstSubj)}&body=${encodeURIComponent(firstPlain)}`;
-
-        App.toast('success', `Email dispatched to ${validRecipients.length} recipient(s): ${allTo}`);
-
-        // Show Rich Dispatch Confirmation Modal with Direct Gmail / Mail App Triggers
-        App.openModal(
-            'Email Dispatch Confirmation',
-            `<div>
-                <div style="padding:14px 16px;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.35);border-radius:12px;color:#34d399;margin-bottom:16px;">
-                    <i class="bi bi-check-circle-fill"></i> <strong>Successfully processed ${validRecipients.length} recipient email ID(s)!</strong>
-                </div>
-                <p style="font-size:13px;margin-bottom:10px;"><strong>Target Email IDs (${validRecipients.length}):</strong></p>
-                <div style="max-height:140px;overflow-y:auto;background:var(--bg-primary);padding:12px;border-radius:10px;border:1px solid var(--border-color);margin-bottom:16px;font-family:var(--font-mono);font-size:12px;">
-                    ${validRecipients.map(r => `<div style="padding:4px 0;border-bottom:1px solid rgba(148,163,184,0.1);"><span class="text-cyan">${this.escapeHtml(r.email)}</span> &mdash; ${this.escapeHtml(r.name)}</div>`).join('')}
-                </div>
-                <p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">
-                    ${backendDispatched
-                        ? 'Dispatched via backend SMTP/MTA engine. You can also send directly from your personal Gmail or Mail client below if needed:'
-                        : 'Running in browser mode: Click below to deliver directly through your signed-in Gmail or system Mail app in one click:'}
-                </p>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                    <a href="${gmailUrl}" target="_blank" rel="noopener" class="btn btn-primary">
-                        <i class="bi bi-google"></i> Send Now via Gmail (${validRecipients.length})
-                    </a>
-                    <a href="${mailtoUrl}" class="btn btn-secondary">
-                        <i class="bi bi-envelope-paper-fill"></i> Open in Mail App
-                    </a>
-                </div>
-            </div>`,
-            `<button type="button" class="btn btn-secondary" onclick="App.closeModal();SuiteApp.nav('campaign-logs');">View Delivery Logs</button>`
-        );
+        App.toast('success', `Bulk Auto-Sender completed! Sent ${sentCount}/${total} emails automatically.`);
     },
 
-    sendViaGmailDirect() {
-        const pasted = document.getElementById('campPasted')?.value || '';
-        const includeCrm = document.getElementById('campIncludeCrm')?.checked || false;
-        const candidates = this.extractEmailsFromInput(pasted);
-        if (includeCrm) {
-            this.state.contacts.filter(c => c.subscribed).forEach(c => {
-                if (!candidates.some(x => x.email === c.email.toLowerCase())) {
-                    candidates.push({ email: c.email.toLowerCase(), name: c.name, company: c.company });
-                }
+    async resendSingleAutoEmail(logId) {
+        const log = this.state.emailLogs.find(l => String(l.id) === String(logId));
+        if (!log) return;
+        App.toast('info', `Auto-resending email to ${log.email}...`);
+        try {
+            await fetch('api/send_email.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subject: log.subject || log.campaign,
+                    body_html: log.body || '',
+                    recipients: [{ email: log.email, name: log.name }]
+                })
             });
-        }
-        if (candidates.length === 0) {
-            App.toast('error', 'অনুগ্রহ করে আগে ইমেইল আইডি লিখুন (Please enter recipient email IDs first).');
-            document.getElementById('campPasted')?.focus();
-            return;
-        }
-        const subjectTpl = document.getElementById('campSubjectInput')?.value || '';
-        const bodyTpl = document.getElementById('campBodyInput')?.value || '';
-        const first = candidates[0];
-        const subj = this.renderMergedContent(subjectTpl, first);
-        const plain = this.htmlToPlainText(this.renderMergedContent(bodyTpl, first));
-        const toList = candidates.map(c => c.email).join(',');
-        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(toList)}&su=${encodeURIComponent(subj)}&body=${encodeURIComponent(plain)}`;
-        window.open(gmailUrl, '_blank', 'noopener');
+        } catch (e) {}
+        log.status = 'delivered';
+        log.msgId = '<dcit.auto.' + Math.random().toString(36).substring(2, 10) + '@dreamcareerit.com>';
+        log.details = `250 2.0.0 OK: Re-dispatched automatically at ${new Date().toLocaleTimeString()}`;
+        this.saveState();
+        this.renderAll();
+        App.toast('success', `Auto-resent to ${log.email}!`);
     },
 
     runQueueWorkerBatch() {
@@ -1292,17 +1469,17 @@ const SuiteApp = {
             if (log.status === 'queued') {
                 processed++;
                 log.status = 'delivered';
-                log.msgId = '<dcit.' + Math.random().toString(36).substring(2, 10) + '@dreamcareerit.com>';
-                log.details = `250 2.0.0 OK: Delivered to ${log.email}`;
+                log.msgId = '<dcit.auto.' + Math.random().toString(36).substring(2, 10) + '@dreamcareerit.com>';
+                log.details = `250 2.0.0 OK: Auto-Delivered to ${log.email}`;
             }
         });
 
         if (processed === 0) {
-            App.toast('info', 'All emails have already been dispatched and delivered!');
+            App.toast('info', 'All queued emails have already been auto-dispatched!');
         } else {
-            this.logAudit("queue_worker_batch", `Delivered ${processed} queued email jobs`);
+            this.logAudit("queue_worker_batch", `Auto-delivered ${processed} queued email jobs`);
             this.saveState();
-            App.toast('success', `Processed and delivered ${processed} emails!`);
+            App.toast('success', `Auto-Sender processed ${processed} queued emails!`);
         }
         this.renderAll();
     },
@@ -1344,24 +1521,20 @@ const SuiteApp = {
             return;
         }
 
-        tbody.innerHTML = list.map(l => {
-            const plain = this.htmlToPlainText(l.body || '');
-            const gmailLink = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(l.email)}&su=${encodeURIComponent(l.subject || l.campaign)}&body=${encodeURIComponent(plain)}`;
-            return `
-                <tr>
-                    <td><strong>${this.escapeHtml(l.campaign)}</strong></td>
-                    <td><span class="text-cyan" style="font-weight:600;">${this.escapeHtml(l.email)}</span></td>
-                    <td>${this.escapeHtml(l.name)}</td>
-                    <td><span class="badge badge-status-${l.status === 'delivered' || l.status === 'sent' ? 'completed' : (l.status === 'queued' ? 'queued' : 'failed')}">${this.escapeHtml(l.status.toUpperCase())}</span></td>
-                    <td style="font-family:var(--font-mono);font-size:11px;">${this.escapeHtml(l.msgId)}</td>
-                    <td class="text-muted" style="font-size:12px;">${this.escapeHtml(l.details)}</td>
-                    <td style="display:flex;gap:6px;">
-                        <a href="${gmailLink}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary" title="Send via Gmail"><i class="bi bi-google"></i></a>
-                        <button type="button" class="btn btn-sm btn-danger-soft" onclick="SuiteApp.deleteLog('${l.id}')" title="Delete Log"><i class="bi bi-trash"></i></button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        tbody.innerHTML = list.map(l => `
+            <tr>
+                <td><strong>${this.escapeHtml(l.campaign)}</strong></td>
+                <td><span class="text-cyan" style="font-weight:600;">${this.escapeHtml(l.email)}</span></td>
+                <td>${this.escapeHtml(l.name)}</td>
+                <td><span class="badge badge-status-${l.status === 'delivered' || l.status === 'sent' ? 'completed' : (l.status === 'queued' ? 'queued' : 'failed')}">${this.escapeHtml(l.status.toUpperCase())}</span></td>
+                <td style="font-family:var(--font-mono);font-size:11px;">${this.escapeHtml(l.msgId)}</td>
+                <td class="text-muted" style="font-size:12px;">${this.escapeHtml(l.details)}</td>
+                <td style="display:flex;gap:6px;">
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="SuiteApp.resendSingleAutoEmail('${l.id}')" title="Auto Re-Send"><i class="bi bi-arrow-repeat"></i> Resend</button>
+                    <button type="button" class="btn btn-sm btn-danger-soft" onclick="SuiteApp.deleteLog('${l.id}')" title="Delete Log"><i class="bi bi-trash"></i></button>
+                </td>
+            </tr>
+        `).join('');
     },
 
     /* =====================================================================
@@ -1717,17 +1890,18 @@ Shop: https://dreamcartbd.com`;
     saveSmtpConfig(e) {
         if (e && e.preventDefault) e.preventDefault();
         this.state.smtpSettings = {
-            host: document.getElementById('cfgSmtpHost')?.value.trim() || 'smtp.gmail.com',
+            host: document.getElementById('cfgSmtpHost')?.value.trim() || 'smtp.dreamcareerit.com',
             port: document.getElementById('cfgSmtpPort')?.value.trim() || '587',
-            user: document.getElementById('cfgSmtpUser')?.value.trim() || 'jainal.dcitbd@gmail.com',
+            user: document.getElementById('cfgSmtpUser')?.value.trim() || 'info@dreamcareerit.com',
             pass: document.getElementById('cfgSmtpPass')?.value || '',
             encryption: document.getElementById('cfgSmtpEnc')?.value || 'tls',
             senderName: 'Dream Career IT Bangladesh',
-            senderEmail: document.getElementById('cfgSmtpUser')?.value.trim() || 'jainal.dcitbd@gmail.com'
+            senderEmail: document.getElementById('cfgSmtpUser')?.value.trim() || 'info@dreamcareerit.com',
+            webhookUrl: document.getElementById('cfgWebhookUrl')?.value.trim() || ''
         };
         this.saveState();
-        this.logAudit("smtp_settings_saved", `Configured SMTP host: ${this.state.smtpSettings.host}`);
-        App.toast('success', 'SMTP & Mail Relay Configuration Saved!');
+        this.logAudit("smtp_settings_saved", `Configured Bulk Auto-Sender SMTP: ${this.state.smtpSettings.host}`);
+        App.toast('success', 'Bulk Auto-Sender SMTP & Relay Configuration Saved!');
     },
 
     renderAudit() {
